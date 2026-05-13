@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git mv *)",
+      "Bash(npm run *)",
+      "PowerShell(taskkill *)",
+      "PowerShell(Get-Command *)",
+      "PowerShell(Test-Path *)",
+      "PowerShell($env:PGPASSWORD = 'manwol123!'; & \"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U postgres -h localhost -d boarddb -c \"ALTER TABLE posts ADD COLUMN IF NOT EXISTS barcode VARCHAR\\(50\\);\")",
+      "PowerShell($env:PGPASSWORD = 'manwol123!'; & \"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U postgres -h localhost -d boarddb -c \"\\\\d posts\")",
+      "PowerShell(npx tsc --noEmit 2>&1 | Select-Object -First 50)"
+    ]
+  }
+}
