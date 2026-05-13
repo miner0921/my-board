@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { auth } from "@/auth";
+import { readUploadedImage } from "@/lib/upload";
 
 // GET: 게시글 목록 조회
+// image_data(BYTEA)는 절대 같이 SELECT하지 않음. 존재 여부만 has_image로 표시
 export async function GET() {
   try {
-    // posts 테이블 + users 테이블을 JOIN해서 작성자 닉네임도 함께 가져옴
     const result = await query(
       `SELECT
          p.id,
@@ -14,6 +15,7 @@ export async function GET() {
          p.content,
          p.created_at,
          p.user_id,
+         (p.image_data IS NOT NULL) AS has_image,
          u.nickname AS author_nickname,
          (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
        FROM posts p
@@ -32,6 +34,7 @@ export async function GET() {
 }
 
 // POST: 새 게시글 작성 (로그인 필수)
+// multipart/form-data 로 받음: title, content, barcode, image(선택)
 export async function POST(request: Request) {
   try {
     // 1. 로그인 확인
@@ -43,8 +46,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. 입력값 받기
-    const { title, content, barcode } = await request.json();
+    // 2. FormData 파싱
+    const formData = await request.formData();
+    const title = String(formData.get("title") ?? "").trim();
+    const content = String(formData.get("content") ?? "").trim();
+    const barcodeRaw = String(formData.get("barcode") ?? "").trim();
+    const image = formData.get("image");
 
     if (!title || !content) {
       return NextResponse.json(
@@ -60,12 +67,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 바코드는 선택값. 빈 문자열은 NULL로 저장
-    const barcodeValue: string | null =
-      typeof barcode === "string" && barcode.trim() !== ""
-        ? barcode.trim()
-        : null;
-
+    const barcodeValue: string | null = barcodeRaw !== "" ? barcodeRaw : null;
     if (barcodeValue !== null && barcodeValue.length > 50) {
       return NextResponse.json(
         { error: "바코드는 50자 이하여야 합니다." },
@@ -73,12 +75,25 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. DB에 저장
+    // 3. 이미지 검증 (선택)
+    let imageBuffer: Buffer | null = null;
+    let imageMime: string | null = null;
+    if (image instanceof File && image.size > 0) {
+      const result = await readUploadedImage(image);
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+      imageBuffer = result.buffer;
+      imageMime = result.mime;
+    }
+
+    // 4. DB에 저장 (image_data는 BYTEA, pg가 Buffer를 자동으로 바인딩)
     const result = await query(
-      `INSERT INTO posts (title, content, barcode, user_id)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, title, content, barcode, user_id, created_at`,
-      [title, content, barcodeValue, session.user.id]
+      `INSERT INTO posts (title, content, barcode, image_data, image_mime, user_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, title, content, barcode, user_id, created_at,
+                 (image_data IS NOT NULL) AS has_image`,
+      [title, content, barcodeValue, imageBuffer, imageMime, session.user.id]
     );
 
     return NextResponse.json(

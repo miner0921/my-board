@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { useEffect } from "react";
 import Link from "next/link";
 
 export default function NewPostPage() {
@@ -12,8 +11,11 @@ export default function NewPostPage() {
   const [title, setTitle] = useState("");
   const [barcode, setBarcode] = useState("");
   const [content, setContent] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 로그인 안 한 사용자는 로그인 페이지로 보냄
   useEffect(() => {
@@ -23,16 +25,69 @@ export default function NewPostPage() {
     }
   }, [status, router]);
 
+  // 미리보기 URL은 컴포넌트 언마운트 시 해제
+  useEffect(() => {
+    return () => {
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
+    };
+  }, [imagePreview]);
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setError("");
+
+    // 이전 미리보기 정리
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+
+    if (!file) {
+      setImageFile(null);
+      setImagePreview(null);
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setError("이미지 파일만 첨부할 수 있습니다.");
+      e.target.value = "";
+      setImageFile(null);
+      setImagePreview(null);
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError("이미지는 5MB 이하만 업로드할 수 있습니다.");
+      e.target.value = "";
+      setImageFile(null);
+      setImagePreview(null);
+      return;
+    }
+
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  };
+
+  const handleRemoveImage = () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImageFile(null);
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
     try {
+      // multipart/form-data 로 전송 (Content-Type은 브라우저가 자동 설정)
+      const formData = new FormData();
+      formData.append("title", title);
+      formData.append("content", content);
+      formData.append("barcode", barcode);
+      if (imageFile) formData.append("image", imageFile);
+
       const res = await fetch("/api/posts", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, content, barcode }),
+        body: formData,
       });
 
       const data = await res.json();
@@ -43,7 +98,6 @@ export default function NewPostPage() {
         return;
       }
 
-      // 작성 성공 → 작성한 글의 상세 페이지로 이동
       router.push(`/posts/${data.post.id}`);
       router.refresh();
     } catch (err) {
@@ -120,6 +174,38 @@ export default function NewPostPage() {
             disabled
             className="w-full px-4 py-2 border border-zinc-200 bg-zinc-50 text-zinc-500 rounded-lg"
           />
+        </div>
+
+        {/* 이미지 (선택) */}
+        <div>
+          <label className="block text-sm font-medium text-zinc-700 mb-1">
+            대표 이미지 <span className="text-zinc-400 text-xs">(선택, JPG/PNG/GIF/WEBP · 5MB 이하)</span>
+          </label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            onChange={handleImageChange}
+            className="block w-full text-sm text-zinc-700 file:mr-3 file:px-4 file:py-2 file:rounded-lg file:border file:border-zinc-300 file:bg-white file:text-sm file:font-medium file:text-zinc-700 hover:file:bg-zinc-50 file:cursor-pointer"
+          />
+          {imagePreview && (
+            <div className="mt-3 inline-block relative">
+              {/* 미리보기는 외부 URL이 아니라 blob:이라 next/image 대신 img 사용 */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imagePreview}
+                alt="미리보기"
+                className="max-h-64 rounded-lg border border-zinc-200"
+              />
+              <button
+                type="button"
+                onClick={handleRemoveImage}
+                className="mt-2 text-xs text-zinc-500 hover:text-red-600"
+              >
+                이미지 제거
+              </button>
+            </div>
+          )}
         </div>
 
         {/* 내용 */}

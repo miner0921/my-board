@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
@@ -15,6 +15,18 @@ export default function EditPostPage() {
   const [barcode, setBarcode] = useState("");
   const [content, setContent] = useState("");
   const [originalUserId, setOriginalUserId] = useState<number | null>(null);
+
+  // 이미지 관련 상태:
+  // hasExistingImage  = 서버에 저장된 기존 이미지가 있는지 (BYTEA는 별도 라우트로 받음)
+  // newImageFile      = 사용자가 새로 고른 파일
+  // newImagePreview   = 새 파일의 blob: 미리보기 URL
+  // removeExisting    = 기존 이미지를 떼겠다는 의사 (새 파일 없이)
+  const [hasExistingImage, setHasExistingImage] = useState(false);
+  const [newImageFile, setNewImageFile] = useState<File | null>(null);
+  const [newImagePreview, setNewImagePreview] = useState<string | null>(null);
+  const [removeExisting, setRemoveExisting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -35,6 +47,7 @@ export default function EditPostPage() {
         setTitle(data.post.title);
         setBarcode(data.post.barcode ?? "");
         setContent(data.post.content);
+        setHasExistingImage(!!data.post.has_image);
         setOriginalUserId(data.post.user_id);
       } catch (err) {
         console.error(err);
@@ -63,6 +76,59 @@ export default function EditPostPage() {
     }
   }, [status, fetching, originalUserId, session, router, postId]);
 
+  // blob: URL 정리
+  useEffect(() => {
+    return () => {
+      if (newImagePreview) URL.revokeObjectURL(newImagePreview);
+    };
+  }, [newImagePreview]);
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setError("");
+
+    if (newImagePreview) URL.revokeObjectURL(newImagePreview);
+
+    if (!file) {
+      setNewImageFile(null);
+      setNewImagePreview(null);
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setError("이미지 파일만 첨부할 수 있습니다.");
+      e.target.value = "";
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError("이미지는 5MB 이하만 업로드할 수 있습니다.");
+      e.target.value = "";
+      return;
+    }
+
+    setNewImageFile(file);
+    setNewImagePreview(URL.createObjectURL(file));
+    // 새 파일을 골랐으면 "기존 이미지 제거" 의사는 무의미하므로 리셋
+    setRemoveExisting(false);
+  };
+
+  const handleClearNew = () => {
+    if (newImagePreview) URL.revokeObjectURL(newImagePreview);
+    setNewImageFile(null);
+    setNewImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleRemoveExisting = () => {
+    setRemoveExisting(true);
+    handleClearNew();
+  };
+
+  const handleUndoRemoveExisting = () => {
+    setRemoveExisting(false);
+  };
+
   // 수정 제출
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,10 +136,19 @@ export default function EditPostPage() {
     setLoading(true);
 
     try {
+      const formData = new FormData();
+      formData.append("title", title);
+      formData.append("content", content);
+      formData.append("barcode", barcode);
+      if (newImageFile) {
+        formData.append("image", newImageFile);
+      } else if (removeExisting) {
+        formData.append("removeImage", "1");
+      }
+
       const res = await fetch(`/api/posts/${postId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, content, barcode }),
+        body: formData,
       });
 
       const data = await res.json();
@@ -114,6 +189,11 @@ export default function EditPostPage() {
     );
   }
 
+  // 화면에 어떤 이미지를 미리보기로 보일지 결정
+  const showingNewPreview = !!newImagePreview;
+  const showingExisting =
+    !showingNewPreview && !removeExisting && hasExistingImage;
+
   return (
     <main className="max-w-3xl mx-auto px-6 py-8">
       <h1 className="text-2xl font-bold mb-6">품목 수정</h1>
@@ -149,6 +229,76 @@ export default function EditPostPage() {
             maxLength={50}
           />
           <p className="text-xs text-zinc-400 mt-1">{barcode.length} / 50자</p>
+        </div>
+
+        {/* 대표 이미지 */}
+        <div>
+          <label className="block text-sm font-medium text-zinc-700 mb-1">
+            대표 이미지{" "}
+            <span className="text-zinc-400 text-xs">
+              (선택, JPG/PNG/GIF/WEBP · 5MB 이하)
+            </span>
+          </label>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            onChange={handleImageChange}
+            className="block w-full text-sm text-zinc-700 file:mr-3 file:px-4 file:py-2 file:rounded-lg file:border file:border-zinc-300 file:bg-white file:text-sm file:font-medium file:text-zinc-700 hover:file:bg-zinc-50 file:cursor-pointer"
+          />
+
+          {showingNewPreview && (
+            <div className="mt-3">
+              <p className="text-xs text-zinc-500 mb-1">새 이미지 미리보기</p>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={newImagePreview!}
+                alt="새 이미지 미리보기"
+                className="max-h-64 rounded-lg border border-zinc-200"
+              />
+              <button
+                type="button"
+                onClick={handleClearNew}
+                className="mt-2 text-xs text-zinc-500 hover:text-red-600"
+              >
+                선택 취소
+              </button>
+            </div>
+          )}
+
+          {showingExisting && (
+            <div className="mt-3">
+              <p className="text-xs text-zinc-500 mb-1">현재 이미지</p>
+              {/* DB의 BYTEA는 /api/posts/[id]/image 에서 직접 서빙 */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/api/posts/${postId}/image`}
+                alt="현재 이미지"
+                className="max-h-64 rounded-lg border border-zinc-200"
+              />
+              <button
+                type="button"
+                onClick={handleRemoveExisting}
+                className="mt-2 text-xs text-zinc-500 hover:text-red-600"
+              >
+                이미지 제거
+              </button>
+            </div>
+          )}
+
+          {removeExisting && !showingNewPreview && (
+            <div className="mt-3 text-xs text-zinc-500">
+              저장 시 기존 이미지가 제거됩니다.{" "}
+              <button
+                type="button"
+                onClick={handleUndoRemoveExisting}
+                className="underline hover:text-zinc-900"
+              >
+                되돌리기
+              </button>
+            </div>
+          )}
         </div>
 
         {/* 내용 */}

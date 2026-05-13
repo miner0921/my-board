@@ -5,6 +5,11 @@ import { Pool } from "pg";
 // 매번 새 연결을 만드는 것보다 훨씬 빠르고 효율적입니다.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  // Neon 같은 클라우드 DB는 SSL이 필수
+  // 로컬 PostgreSQL에서는 SSL 없이 동작
+  ssl: process.env.DATABASE_URL?.includes("neon.tech")
+    ? { rejectUnauthorized: false }
+    : undefined,
 });
 
 // 쿼리를 쉽게 실행할 수 있는 헬퍼 함수

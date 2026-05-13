@@ -33,6 +33,9 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# Claude Code 개인 권한 설정 (PC별 개인 파일이라 공유하지 않음)
+.claude/settings.local.json
+
 # vercel
 .vercel
 

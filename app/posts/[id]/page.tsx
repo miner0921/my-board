@@ -10,6 +10,7 @@ type Post = {
   title: string;
   barcode: string | null;
   content: string;
+  has_image: boolean;
   created_at: string;
   updated_at: string;
   user_id: number;
@@ -36,10 +37,12 @@ export default async function PostDetailPage({ params }: PageProps) {
   const { id } = await params;
   const session = await auth();
 
-  // DB에서 품목 가져오기
+  // DB에서 품목 가져오기 (BYTEA 본체는 가져오지 않고 존재 여부만)
   const result = await query(
     `SELECT
-       p.id, p.title, p.barcode, p.content, p.created_at, p.updated_at, p.user_id,
+       p.id, p.title, p.barcode, p.content,
+       (p.image_data IS NOT NULL) AS has_image,
+       p.created_at, p.updated_at, p.user_id,
        u.nickname AS author_nickname
      FROM posts p
      JOIN users u ON p.user_id = u.id
@@ -92,6 +95,20 @@ export default async function PostDetailPage({ params }: PageProps) {
             )}
           </div>
         </div>
+
+        {/* 대표 이미지 — DB의 BYTEA를 별도 라우트에서 서빙 */}
+        {post.has_image && (
+          <div className="pt-6">
+            {/* 동적 라우트 응답이라 next/image 대신 img 사용. */}
+            {/* updated_at을 쿼리스트링으로 붙여 수정 시 캐시가 자동 갱신되도록 함 */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/posts/${post.id}/image?v=${new Date(post.updated_at).getTime()}`}
+              alt={post.title}
+              className="max-w-full max-h-[500px] rounded-lg border border-zinc-200"
+            />
+          </div>
+        )}
 
         {/* 본문 */}
         <div className="py-6 text-zinc-800 whitespace-pre-wrap leading-relaxed">
