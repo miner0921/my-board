@@ -69,7 +69,8 @@ CREATE TABLE items (
   id SERIAL PRIMARY KEY,
   barcode VARCHAR(100) UNIQUE NOT NULL,
   name VARCHAR(200) NOT NULL,
-  image_url TEXT,
+  image_data BYTEA,
+  image_mime VARCHAR(100),
   created_by INTEGER REFERENCES users(id),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -114,15 +115,17 @@ CREATE INDEX idx_scan_logs_invoice ON scan_logs(invoice_id);
 ```
 
 ## 이미지 저장 방식
-**로컬 파일 업로드 (public 폴더)**
-- 업로드 경로: `public/uploads/items/`
-- 파일명: `{timestamp}-{원본파일명}` (충돌 방지)
-- DB에는 `/uploads/items/파일명` 형태로 저장
-- API 라우트에서 처리 (Next.js의 formData 사용)
-- 허용 형식: jpg, jpeg, png, webp
-- 최대 크기: 5MB
-- **주의**: Vercel 배포 환경에서는 파일 시스템이 ephemeral이라 영구 저장 안 됨. 
-  로컬 개발에서는 OK. 프로덕션 배포 시에는 Cloudinary 등으로 전환 필요.
+**DB의 BYTEA 컬럼에 직접 저장** (게시판과 동일 방식, Vercel/Neon 양쪽 호환)
+- `items` 테이블에 `image_data BYTEA` + `image_mime VARCHAR(100)` 두 컬럼 사용
+- `multipart/form-data`로 업로드 받아 `Buffer`로 변환 후 INSERT
+- 검증은 `lib/upload.ts`의 `readUploadedImage()` 재사용
+  - 허용 형식: image/jpeg, image/png, image/gif, image/webp
+  - 최대 크기: 5MB
+- 목록/단일 조회 쿼리는 BYTEA를 **절대 SELECT하지 않음**
+  - `(image_data IS NOT NULL) AS has_image` 로 존재 여부만 가져옴 (성능)
+- 이미지 바이트는 별도 라우트(`/api/warehouse/items/[id]/image`)에서 서빙
+  - 응답 헤더에 `Content-Type: image_mime`, `ETag`, `Cache-Control: private` 부착
+- `<img src="/api/warehouse/items/[id]/image?v={updated_at_ts}">` 형태로 수정 시 자동 캐시 갱신
 
 ## 모바일/태블릿 지원
 - 검수 작업은 태블릿에서 많이 함 → /warehouse/scan은 모바일 우선 디자인
@@ -172,9 +175,9 @@ app/
 │   ├── page.tsx (대시보드)
 │   ├── items/
 │   │   ├── page.tsx (목록)
+│   │   ├── DeleteButton.tsx (목록 카드에서 사용)
 │   │   ├── new/page.tsx
 │   │   ├── [id]/edit/page.tsx
-│   │   ├── [id]/DeleteButton.tsx
 │   │   └── bulk/page.tsx
 │   ├── invoices/
 │   │   ├── page.tsx
@@ -189,7 +192,7 @@ app/
     └── warehouse/
         ├── items/route.ts
         ├── items/[id]/route.ts
-        ├── items/upload-image/route.ts
+        ├── items/[id]/image/route.ts
         ├── items/bulk/route.ts
         ├── invoices/route.ts
         ├── invoices/[id]/route.ts
@@ -201,10 +204,7 @@ lib/
 ├── db.ts (기존)
 └── upload.ts (이미지 업로드 헬퍼 - 신규)
 
-public/
-└── uploads/
-    └── items/ (품목 이미지)
-
 migrations/
-└── 001_warehouse_schema.sql (DB 변경 SQL 보관소)
+├── 001_warehouse_schema.sql (DB 변경 SQL 보관소)
+└── 002_items_image_bytea.sql (items 이미지 BYTEA 전환)
 ```
