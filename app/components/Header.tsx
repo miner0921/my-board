@@ -30,6 +30,12 @@ export default function Header() {
           ) : session ? (
             // 로그인된 상태
             <>
+              <Link
+                href="/warehouse"
+                className="px-3 py-1.5 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition"
+              >
+                바코드 관리
+              </Link>
               <span className="text-sm text-zinc-700">
                 <span className="font-medium">{session.user?.name}</span>님
               </span>
