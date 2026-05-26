@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { auth } from "@/auth";
 import { readUploadedImage } from "@/lib/upload";
+import { logAccess } from "@/lib/audit";
 
 // GET: 품목 목록 (로그인 필수)
 // ?q= 가 있으면 name/barcode 부분일치 검색
@@ -37,6 +38,13 @@ export async function GET(request: Request) {
              ORDER BY i.created_at DESC`,
             [`%${q}%`]
           );
+
+    await logAccess({
+      session,
+      action: "item.list",
+      targetType: "item",
+      request,
+    });
 
     return NextResponse.json({ items: result.rows });
   } catch (error) {
@@ -103,6 +111,14 @@ export async function POST(request: Request) {
                    (image_data IS NOT NULL) AS has_image`,
         [barcode, name, imageBuffer, imageMime, session.user.id]
       );
+
+      await logAccess({
+        session,
+        action: "item.create",
+        targetType: "item",
+        targetId: result.rows[0].id,
+        request,
+      });
 
       return NextResponse.json(
         { item: result.rows[0], message: "품목 등록 성공!" },

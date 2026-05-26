@@ -47,21 +47,13 @@ export default function Header() {
               </button>
             </>
           ) : (
-            // 로그아웃 상태
-            <>
-              <Link
-                href="/login"
-                className="px-4 py-1.5 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition"
-              >
-                로그인
-              </Link>
-              <Link
-                href="/signup"
-                className="px-4 py-1.5 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition"
-              >
-                회원가입
-              </Link>
-            </>
+            // 로그아웃 상태 (Phase 2.5: 회원가입 메뉴 제거)
+            <Link
+              href="/login"
+              className="px-4 py-1.5 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition"
+            >
+              로그인
+            </Link>
           )}
         </nav>
       </div>

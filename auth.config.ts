@@ -5,6 +5,10 @@ export default {
   providers: [],
   session: {
     strategy: "jwt",
+    // 30분 절대 만료. updateAge 만큼 활동이 있으면 새 쿠키가 발급되어 만료 시점이 갱신됨.
+    // → 사실상 "30분 활동 없으면 자동 로그아웃" 동작.
+    maxAge: 30 * 60,
+    updateAge: 5 * 60,
   },
   pages: {
     signIn: "/login",

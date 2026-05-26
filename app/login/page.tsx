@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
-import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams.get("callbackUrl") || "/";
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -17,23 +19,43 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
 
-    // NextAuth의 signIn 함수로 로그인 시도
-    // "credentials"는 auth.ts에서 설정한 Credentials Provider를 의미
     const result = await signIn("credentials", {
       username,
       password,
-      redirect: false, // 자동 리다이렉트 막고, 결과를 직접 처리
+      redirect: false,
     });
 
     if (result?.error) {
+      // Rate limit 차단 상태인지 확인해 친절한 메시지로 표시
+      // (정확한 정책은 노출하지 않고 남은 시간만 안내)
+      try {
+        const statusRes = await fetch("/api/login-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username }),
+        });
+        const statusData = await statusRes.json();
+        if (
+          statusData?.blocked &&
+          typeof statusData.retryAfterSec === "number"
+        ) {
+          setError(
+            `너무 많은 시도가 감지되었습니다. ${statusData.retryAfterSec}초 후 다시 시도해주세요.`
+          );
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // 상태 조회 실패 시 일반 메시지로 폴백
+      }
       setError("아이디 또는 비밀번호가 일치하지 않습니다.");
       setLoading(false);
       return;
     }
 
-    // 로그인 성공 → 메인 페이지로 이동
-    router.push("/");
-    router.refresh(); // 서버 컴포넌트의 세션 정보 새로고침
+    // 로그인 성공 → 원래 가려던 페이지(callbackUrl) 또는 홈으로
+    router.push(callbackUrl);
+    router.refresh();
   };
 
   return (
@@ -52,6 +74,7 @@ export default function LoginPage() {
               onChange={(e) => setUsername(e.target.value)}
               className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
               required
+              autoComplete="username"
             />
           </div>
 
@@ -65,6 +88,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
               required
+              autoComplete="current-password"
             />
           </div>
 
@@ -81,15 +105,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="text-center text-sm text-zinc-600 mt-6">
-          계정이 없으신가요?{" "}
-          <Link
-            href="/signup"
-            className="text-zinc-900 font-medium hover:underline"
-          >
-            회원가입
-          </Link>
-        </p>
+        {/* Phase 2.5: 회원가입 차단으로 하단 링크 제거 */}
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { auth } from "@/auth";
 import { readUploadedImage } from "@/lib/upload";
+import { logAccess } from "@/lib/audit";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -9,7 +10,7 @@ type RouteContext = {
 
 // GET: 단일 품목 조회 (로그인 필수)
 // 수정 페이지 초기값 로딩용. image_data는 SELECT 하지 않음.
-export async function GET(_request: Request, { params }: RouteContext) {
+export async function GET(request: Request, { params }: RouteContext) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -38,6 +39,14 @@ export async function GET(_request: Request, { params }: RouteContext) {
         { status: 404 }
       );
     }
+
+    await logAccess({
+      session,
+      action: "item.read",
+      targetType: "item",
+      targetId: id,
+      request,
+    });
 
     return NextResponse.json({ item: result.rows[0] });
   } catch (error) {
@@ -135,6 +144,14 @@ export async function PUT(request: Request, { params }: RouteContext) {
         [barcode, name, id, ...imageParams]
       );
 
+      await logAccess({
+        session,
+        action: "item.update",
+        targetType: "item",
+        targetId: id,
+        request,
+      });
+
       return NextResponse.json({ item: result.rows[0], message: "수정 완료!" });
     } catch (e: unknown) {
       if (
@@ -161,7 +178,7 @@ export async function PUT(request: Request, { params }: RouteContext) {
 
 // DELETE: 품목 삭제 (본인만)
 // 송장(invoice_items)에서 참조 중이면 FK 위반으로 차단
-export async function DELETE(_request: Request, { params }: RouteContext) {
+export async function DELETE(request: Request, { params }: RouteContext) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -207,6 +224,14 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
       }
       throw e;
     }
+
+    await logAccess({
+      session,
+      action: "item.delete",
+      targetType: "item",
+      targetId: id,
+      request,
+    });
 
     return NextResponse.json({ message: "삭제 완료!" });
   } catch (error) {
