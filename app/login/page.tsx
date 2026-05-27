@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 
-export default function LoginPage() {
+// useSearchParams 는 정적 프리렌더링을 막는다(Next.js 15 정책).
+// 빌드 시 "missing-suspense-with-csr-bailout" 에러를 피하려면
+// hook 을 호출하는 부분을 별도 컴포넌트로 분리해 <Suspense> 로 감싸야 한다.
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/";
@@ -59,51 +62,68 @@ export default function LoginPage() {
   };
 
   return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium text-zinc-700 mb-1">
+          아이디
+        </label>
+        <input
+          type="text"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
+          required
+          autoComplete="username"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-zinc-700 mb-1">
+          비밀번호
+        </label>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
+          required
+          autoComplete="current-password"
+        />
+      </div>
+
+      {error && <p className="text-sm text-red-600 text-center">{error}</p>}
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full py-2.5 bg-zinc-900 text-white rounded-lg font-medium hover:bg-zinc-800 transition disabled:opacity-50"
+      >
+        {loading ? "로그인 중..." : "로그인"}
+      </button>
+    </form>
+  );
+}
+
+function LoginFormFallback() {
+  return (
+    <div className="space-y-4">
+      <div className="h-[68px]" />
+      <div className="h-[68px]" />
+      <div className="h-10 bg-zinc-100 rounded-lg animate-pulse" />
+      <p className="text-center text-sm text-zinc-400">로딩 중...</p>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-50 px-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-zinc-200 p-8">
         <h1 className="text-2xl font-bold text-center mb-8">로그인</h1>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-zinc-700 mb-1">
-              아이디
-            </label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
-              required
-              autoComplete="username"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-zinc-700 mb-1">
-              비밀번호
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
-              required
-              autoComplete="current-password"
-            />
-          </div>
-
-          {error && (
-            <p className="text-sm text-red-600 text-center">{error}</p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 bg-zinc-900 text-white rounded-lg font-medium hover:bg-zinc-800 transition disabled:opacity-50"
-          >
-            {loading ? "로그인 중..." : "로그인"}
-          </button>
-        </form>
+        <Suspense fallback={<LoginFormFallback />}>
+          <LoginForm />
+        </Suspense>
 
         {/* Phase 2.5: 회원가입 차단으로 하단 링크 제거 */}
       </div>
