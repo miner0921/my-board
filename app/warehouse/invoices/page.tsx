@@ -2,33 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { query } from "@/lib/db";
-
-// =====================================================
-// 임시 마스킹 (Phase 4-A-3에서 lib/mask.ts 로 추출 예정)
-// 정책:
-//   이름   → "홍○○"  (첫 글자만)
-//   전화   → "010-****-9145"  (가운데 4자리)
-//   주소   → "경기 수원시 영통구 ***"  (시/구까지만)
-// =====================================================
-function maskName(name: string | null | undefined): string {
-  if (!name) return "-";
-  const t = name.trim();
-  if (t.length === 0) return "-";
-  if (t.length === 1) return t;
-  return t[0] + "○".repeat(t.length - 1);
-}
-
-function maskPhone(phone: string | null | undefined): string {
-  if (!phone) return "-";
-  const digits = phone.replace(/\D/g, "");
-  if (digits.length < 7) return phone;
-  const prefix = digits.slice(0, 3);
-  const tail = digits.slice(-4);
-  return `${prefix}-****-${tail}`;
-}
-
-// 사용 안 함 (목록에선 주소 미표시) — 상세 페이지와 정책 통일 위해 같이 정의
-// function maskAddress 는 [id]/page.tsx 에 동일 함수 위치
+import { maskName, maskPhone } from "@/lib/mask";
 
 type InvoiceRow = {
   id: number;
@@ -37,6 +11,7 @@ type InvoiceRow = {
   recipient_name: string | null;
   recipient_phone: string | null;
   status: string;
+  customer_type: string | null;
   created_at: string;
   total_qty: number;
   scanned_qty: number;
@@ -52,21 +27,59 @@ function formatDate(date: string) {
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
 }
 
+// 발주서 시트별 customer_type 매핑 (마이그레이션 007 참고)
+function customerTypeBadge(type: string | null) {
+  if (type === "business") {
+    return (
+      <span className="inline-block px-1.5 py-0.5 text-[10px] rounded bg-blue-50 text-blue-700 border border-blue-200">
+        사업자
+      </span>
+    );
+  }
+  if (type === "individual") {
+    return (
+      <span className="inline-block px-1.5 py-0.5 text-[10px] rounded bg-green-50 text-green-700 border border-green-200">
+        개인
+      </span>
+    );
+  }
+  if (type === "retail") {
+    return (
+      <span className="inline-block px-1.5 py-0.5 text-[10px] rounded bg-purple-50 text-purple-700 border border-purple-200">
+        소매
+      </span>
+    );
+  }
+  return (
+    <span className="inline-block px-1.5 py-0.5 text-[10px] rounded bg-zinc-100 text-zinc-500 border border-zinc-200">
+      미분류
+    </span>
+  );
+}
+
+const ALLOWED_TYPES = new Set(["business", "individual", "retail", "none"]);
+
 type PageProps = {
-  searchParams: Promise<{ q?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; type?: string }>;
 };
 
 export default async function InvoiceListPage({ searchParams }: PageProps) {
   const session = await auth();
   if (!session) redirect("/login");
 
-  const { q: qParam, status: statusParam } = await searchParams;
+  const {
+    q: qParam,
+    status: statusParam,
+    type: typeParam,
+  } = await searchParams;
   const q = (qParam ?? "").trim();
   const status =
     statusParam === "pending" || statusParam === "completed"
       ? statusParam
       : "all";
-  const isFiltered = q !== "" || status !== "all";
+  const customerType =
+    typeParam && ALLOWED_TYPES.has(typeParam) ? typeParam : "all";
+  const isFiltered = q !== "" || status !== "all" || customerType !== "all";
 
   // 동적 WHERE 구성
   const conditions: string[] = [];
@@ -81,13 +94,21 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
     params.push(status);
     conditions.push(`i.status = $${params.length}`);
   }
+  if (customerType !== "all") {
+    if (customerType === "none") {
+      conditions.push(`i.customer_type IS NULL`);
+    } else {
+      params.push(customerType);
+      conditions.push(`i.customer_type = $${params.length}`);
+    }
+  }
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
   const result = await query(
     `SELECT
        i.id, i.invoice_no, i.order_no,
        i.recipient_name, i.recipient_phone,
-       i.status, i.created_at,
+       i.status, i.customer_type, i.created_at,
        COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
        COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
      FROM invoices i
@@ -144,9 +165,20 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
           defaultValue={status}
           className="px-3 py-2 border border-zinc-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
         >
-          <option value="all">전체</option>
+          <option value="all">상태: 전체</option>
           <option value="pending">대기</option>
           <option value="completed">완료</option>
+        </select>
+        <select
+          name="type"
+          defaultValue={customerType}
+          className="px-3 py-2 border border-zinc-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
+        >
+          <option value="all">분류: 전체</option>
+          <option value="business">사업자</option>
+          <option value="individual">개인</option>
+          <option value="retail">소매</option>
+          <option value="none">미분류</option>
         </select>
         <button
           type="submit"
@@ -196,8 +228,9 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
             <div className="col-span-3">송장번호</div>
             <div className="col-span-2">주문번호</div>
             <div className="col-span-2">수령인</div>
+            <div className="col-span-1 text-center">분류</div>
             <div className="col-span-1 text-center">진행</div>
-            <div className="col-span-2 text-center">상태</div>
+            <div className="col-span-1 text-center">상태</div>
             <div className="col-span-2 text-center">작성일</div>
           </div>
 
@@ -221,11 +254,15 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
                   {maskPhone(inv.recipient_phone)}
                 </span>
               </div>
+              <div className="sm:col-span-1 sm:text-center">
+                <span className="sm:hidden text-zinc-400 text-xs mr-1">분류:</span>
+                {customerTypeBadge(inv.customer_type)}
+              </div>
               <div className="sm:col-span-1 sm:text-center text-zinc-600 text-xs">
                 <span className="sm:hidden text-zinc-400 mr-1">진행:</span>
                 {inv.scanned_qty} / {inv.total_qty}
               </div>
-              <div className="sm:col-span-2 sm:text-center">
+              <div className="sm:col-span-1 sm:text-center">
                 {inv.status === "completed" ? (
                   <span className="inline-block px-2 py-0.5 text-xs rounded bg-green-50 text-green-700 border border-green-200">
                     완료
