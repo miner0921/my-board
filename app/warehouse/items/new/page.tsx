@@ -76,7 +76,7 @@ export default function NewItemPage() {
 
     try {
       const formData = new FormData();
-      formData.append("barcode", barcode);
+      formData.append("barcode", barcode); // 빈 문자열 OK (서버에서 NULL로 변환)
       formData.append("name", name);
       if (imageFile) formData.append("image", imageFile);
 
@@ -123,24 +123,23 @@ export default function NewItemPage() {
       <h1 className="text-2xl font-bold mb-6">새 품목 등록</h1>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* 바코드 */}
+        {/* 바코드 (선택) — 자동 등록 품목과 일관성 위해 선택 입력 */}
         <div>
           <label className="block text-sm font-medium text-zinc-700 mb-1">
-            바코드
+            바코드 <span className="text-zinc-400 text-xs">(선택)</span>
           </label>
           <input
             type="text"
             value={barcode}
             onChange={(e) => setBarcode(e.target.value)}
             className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 font-mono"
-            placeholder="예: 8801234567890"
+            placeholder="바코드 미등록 (선택)"
             maxLength={100}
-            required
           />
           <p className="text-xs text-zinc-400 mt-1">{barcode.length} / 100자</p>
         </div>
 
-        {/* 품목명 */}
+        {/* 품목명 (필수) */}
         <div>
           <label className="block text-sm font-medium text-zinc-700 mb-1">
             품목명
@@ -157,7 +156,7 @@ export default function NewItemPage() {
           <p className="text-xs text-zinc-400 mt-1">{name.length} / 200자</p>
         </div>
 
-        {/* 이미지 */}
+        {/* 이미지 (선택) */}
         <div>
           <label className="block text-sm font-medium text-zinc-700 mb-1">
             대표 이미지{" "}

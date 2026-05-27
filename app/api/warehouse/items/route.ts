@@ -23,6 +23,7 @@ export async function GET(request: Request) {
     const baseSelect = `
       SELECT
         i.id, i.barcode, i.name, i.created_by, i.created_at, i.updated_at,
+        i.is_auto_created,
         (i.image_data IS NOT NULL) AS has_image,
         u.nickname AS author_nickname
       FROM items i
@@ -57,7 +58,8 @@ export async function GET(request: Request) {
 }
 
 // POST: 새 품목 등록 (로그인 필수)
-// multipart/form-data: barcode, name, image(선택)
+// multipart/form-data: barcode(선택), name(필수), image(선택)
+// barcode 빈 문자열은 NULL 로 저장 (UNIQUE 충돌 회피)
 export async function POST(request: Request) {
   try {
     const session = await auth();
@@ -69,17 +71,17 @@ export async function POST(request: Request) {
     }
 
     const formData = await request.formData();
-    const barcode = String(formData.get("barcode") ?? "").trim();
+    const barcodeRaw = String(formData.get("barcode") ?? "").trim();
     const name = String(formData.get("name") ?? "").trim();
     const image = formData.get("image");
 
-    if (!barcode || !name) {
+    if (!name) {
       return NextResponse.json(
-        { error: "바코드와 품목명을 모두 입력해주세요." },
+        { error: "품목명을 입력해주세요." },
         { status: 400 }
       );
     }
-    if (barcode.length > 100) {
+    if (barcodeRaw.length > 100) {
       return NextResponse.json(
         { error: "바코드는 100자 이하여야 합니다." },
         { status: 400 }
@@ -91,6 +93,8 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    const barcode: string | null = barcodeRaw === "" ? null : barcodeRaw;
 
     let imageBuffer: Buffer | null = null;
     let imageMime: string | null = null;
@@ -125,7 +129,7 @@ export async function POST(request: Request) {
         { status: 201 }
       );
     } catch (e: unknown) {
-      // PostgreSQL unique_violation
+      // PostgreSQL unique_violation (barcode UNIQUE — NULL 끼리는 충돌 안 함)
       if (
         typeof e === "object" &&
         e !== null &&

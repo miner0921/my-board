@@ -25,6 +25,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     const result = await query(
       `SELECT
          i.id, i.barcode, i.name, i.created_by, i.created_at, i.updated_at,
+         i.is_auto_created,
          (i.image_data IS NOT NULL) AS has_image,
          u.nickname AS author_nickname
        FROM items i
@@ -59,7 +60,8 @@ export async function GET(request: Request, { params }: RouteContext) {
 }
 
 // PUT: 품목 수정 (본인만)
-// image 새 파일이면 교체, removeImage="1"이면 NULL, 둘 다 아니면 기존 유지
+// barcode 빈 문자열은 NULL 로 저장.
+// image 새 파일이면 교체, removeImage="1"이면 NULL, 둘 다 아니면 기존 유지.
 export async function PUT(request: Request, { params }: RouteContext) {
   try {
     const session = await auth();
@@ -72,18 +74,18 @@ export async function PUT(request: Request, { params }: RouteContext) {
 
     const { id } = await params;
     const formData = await request.formData();
-    const barcode = String(formData.get("barcode") ?? "").trim();
+    const barcodeRaw = String(formData.get("barcode") ?? "").trim();
     const name = String(formData.get("name") ?? "").trim();
     const image = formData.get("image");
     const removeImage = formData.get("removeImage") === "1";
 
-    if (!barcode || !name) {
+    if (!name) {
       return NextResponse.json(
-        { error: "바코드와 품목명을 모두 입력해주세요." },
+        { error: "품목명을 입력해주세요." },
         { status: 400 }
       );
     }
-    if (barcode.length > 100) {
+    if (barcodeRaw.length > 100) {
       return NextResponse.json(
         { error: "바코드는 100자 이하여야 합니다." },
         { status: 400 }
@@ -96,9 +98,12 @@ export async function PUT(request: Request, { params }: RouteContext) {
       );
     }
 
-    // 본인 등록 품목인지 확인
+    const barcode: string | null = barcodeRaw === "" ? null : barcodeRaw;
+
+    // 권한 체크: 자동 등록(is_auto_created=TRUE)이면 누구나 수정 가능,
+    // 직접 등록 품목은 본인만 수정 가능
     const check = await query(
-      "SELECT created_by FROM items WHERE id = $1",
+      "SELECT created_by, is_auto_created FROM items WHERE id = $1",
       [id]
     );
     if (check.rows.length === 0) {
@@ -107,7 +112,9 @@ export async function PUT(request: Request, { params }: RouteContext) {
         { status: 404 }
       );
     }
-    if (String(check.rows[0].created_by) !== session.user.id) {
+    const isAutoCreated = check.rows[0].is_auto_created === true;
+    const isOwner = String(check.rows[0].created_by) === session.user.id;
+    if (!isAutoCreated && !isOwner) {
       return NextResponse.json(
         { error: "수정 권한이 없습니다." },
         { status: 403 }

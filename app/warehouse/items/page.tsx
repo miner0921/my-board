@@ -6,12 +6,13 @@ import DeleteButton from "./DeleteButton";
 
 type Item = {
   id: number;
-  barcode: string;
+  barcode: string | null;  // 자동 등록 품목은 NULL 가능
   name: string;
   has_image: boolean;
   created_by: number | null;
   created_at: string;
   updated_at: string;
+  is_auto_created: boolean;
   author_nickname: string | null;
 };
 
@@ -40,6 +41,7 @@ export default async function ItemListPage({ searchParams }: PageProps) {
   const baseSelect = `
     SELECT
       i.id, i.barcode, i.name, i.created_by, i.created_at, i.updated_at,
+      i.is_auto_created,
       (i.image_data IS NOT NULL) AS has_image,
       u.nickname AS author_nickname
     FROM items i
@@ -145,6 +147,9 @@ export default async function ItemListPage({ searchParams }: PageProps) {
           {items.map((item) => {
             const isOwner =
               session.user?.id === String(item.created_by ?? "");
+            // 자동 등록 품목은 누구나 수정 가능 (협업). 삭제는 본인만.
+            const canEdit = item.is_auto_created || isOwner;
+            const canDelete = isOwner;
             return (
               <div
                 key={item.id}
@@ -170,24 +175,38 @@ export default async function ItemListPage({ searchParams }: PageProps) {
                   <h2 className="font-medium text-sm text-zinc-900 line-clamp-2 mb-1">
                     {item.name}
                   </h2>
-                  <p className="font-mono text-xs text-zinc-600 mb-2 truncate">
-                    {item.barcode}
-                  </p>
+
+                  {/* 바코드: 있으면 모노스페이스, 없으면 호박색 배지 */}
+                  <div className="mb-2">
+                    {item.barcode ? (
+                      <p className="font-mono text-xs text-zinc-600 truncate">
+                        {item.barcode}
+                      </p>
+                    ) : (
+                      <span className="inline-block px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[10px]">
+                        바코드 미등록
+                      </span>
+                    )}
+                  </div>
+
                   <div className="text-[11px] text-zinc-400 mt-auto">
                     {item.author_nickname ?? "(삭제된 사용자)"} ·{" "}
                     {formatDate(item.created_at)}
                   </div>
 
-                  {/* 본인 등록 품목일 때만 수정/삭제 */}
-                  {isOwner && (
+                  {/* 수정: 자동 등록이면 누구나, 아니면 본인만
+                      삭제: 본인만 */}
+                  {(canEdit || canDelete) && (
                     <div className="flex gap-1.5 mt-3">
-                      <Link
-                        href={`/warehouse/items/${item.id}/edit`}
-                        className="flex-1 text-center px-2 py-1.5 text-xs border border-zinc-300 rounded hover:bg-zinc-50 transition"
-                      >
-                        수정
-                      </Link>
-                      <DeleteButton itemId={item.id} />
+                      {canEdit && (
+                        <Link
+                          href={`/warehouse/items/${item.id}/edit`}
+                          className="flex-1 text-center px-2 py-1.5 text-xs border border-zinc-300 rounded hover:bg-zinc-50 transition"
+                        >
+                          수정
+                        </Link>
+                      )}
+                      {canDelete && <DeleteButton itemId={item.id} />}
                     </div>
                   )}
                 </div>

@@ -11,15 +11,13 @@ export default function EditItemPage() {
   const itemId = params.id as string;
   const { data: session, status } = useSession();
 
+  // barcode/name 은 항상 string. 서버에서 null로 와도 "" 로 강제.
   const [barcode, setBarcode] = useState("");
   const [name, setName] = useState("");
   const [originalUserId, setOriginalUserId] = useState<number | null>(null);
+  const [isAutoCreated, setIsAutoCreated] = useState(false);
 
-  // 이미지 상태:
-  // hasExistingImage = 서버에 저장된 기존 이미지가 있는지
-  // existingImageStamp = 현재 이미지의 캐시 무효화용 타임스탬프
-  // newImageFile / newImagePreview = 사용자가 새로 고른 파일
-  // removeExisting = 기존 이미지를 떼겠다는 의사 (새 파일 없이)
+  // 이미지 상태
   const [hasExistingImage, setHasExistingImage] = useState(false);
   const [existingImageStamp, setExistingImageStamp] = useState<number>(0);
   const [newImageFile, setNewImageFile] = useState<File | null>(null);
@@ -44,11 +42,13 @@ export default function EditItemPage() {
           return;
         }
 
-        setBarcode(data.item.barcode);
-        setName(data.item.name);
+        // 자동 등록 품목은 barcode가 NULL일 수 있음 → "" 로 정규화
+        setBarcode(data.item.barcode ?? "");
+        setName(data.item.name ?? "");
         setHasExistingImage(!!data.item.has_image);
         setExistingImageStamp(new Date(data.item.updated_at).getTime());
         setOriginalUserId(data.item.created_by);
+        setIsAutoCreated(!!data.item.is_auto_created);
       } catch (err) {
         console.error(err);
         setError("네트워크 오류가 발생했습니다.");
@@ -60,7 +60,7 @@ export default function EditItemPage() {
     fetchItem();
   }, [itemId]);
 
-  // 권한 체크
+  // 권한 체크: 자동 등록 품목은 누구나 수정 가능, 아니면 본인만
   useEffect(() => {
     if (status === "loading" || fetching) return;
 
@@ -70,6 +70,8 @@ export default function EditItemPage() {
       return;
     }
 
+    if (isAutoCreated) return;
+
     if (
       originalUserId !== null &&
       session?.user?.id !== String(originalUserId)
@@ -77,7 +79,7 @@ export default function EditItemPage() {
       alert("수정 권한이 없습니다.");
       router.push("/warehouse/items");
     }
-  }, [status, fetching, originalUserId, session, router]);
+  }, [status, fetching, originalUserId, isAutoCreated, session, router]);
 
   useEffect(() => {
     return () => {
@@ -137,7 +139,7 @@ export default function EditItemPage() {
 
     try {
       const formData = new FormData();
-      formData.append("barcode", barcode);
+      formData.append("barcode", barcode); // 빈 문자열 OK (서버에서 NULL로 변환)
       formData.append("name", name);
       if (newImageFile) {
         formData.append("image", newImageFile);
@@ -204,23 +206,23 @@ export default function EditItemPage() {
       <h1 className="text-2xl font-bold mb-6">품목 수정</h1>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* 바코드 */}
+        {/* 바코드 (선택) */}
         <div>
           <label className="block text-sm font-medium text-zinc-700 mb-1">
-            바코드
+            바코드 <span className="text-zinc-400 text-xs">(선택)</span>
           </label>
           <input
             type="text"
             value={barcode}
             onChange={(e) => setBarcode(e.target.value)}
             className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 font-mono"
+            placeholder="바코드 미등록 (선택)"
             maxLength={100}
-            required
           />
           <p className="text-xs text-zinc-400 mt-1">{barcode.length} / 100자</p>
         </div>
 
-        {/* 품목명 */}
+        {/* 품목명 (필수) */}
         <div>
           <label className="block text-sm font-medium text-zinc-700 mb-1">
             품목명

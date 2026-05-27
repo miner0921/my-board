@@ -8,6 +8,8 @@ const ALLOWED_MIME = new Set([
 
 // 5MB 제한
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+// 10MB 제한 (엑셀 — 발주서/송장)
+export const MAX_XLSX_BYTES = 10 * 1024 * 1024;
 
 export type ValidationResult =
   | { ok: true; buffer: Buffer; mime: string }
@@ -30,6 +32,23 @@ export async function readUploadedImage(file: File): Promise<ValidationResult> {
     return { ok: false, error: "이미지는 5MB 이하만 업로드할 수 있습니다." };
   }
 
+  const buffer = Buffer.from(await file.arrayBuffer());
+  return { ok: true, buffer, mime: file.type };
+}
+
+// 업로드된 엑셀(.xlsx) 파일 검증 + Buffer 반환.
+// MIME은 브라우저별로 부정확해서 확장자(.xlsx)와 크기로만 1차 검증하고,
+// 실제 파싱 단계에서 xlsx 라이브러리가 한 번 더 거른다.
+export async function readUploadedXlsx(file: File): Promise<ValidationResult> {
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: "엑셀 파일이 비어있습니다." };
+  }
+  if (!file.name.toLowerCase().endsWith(".xlsx")) {
+    return { ok: false, error: "엑셀(.xlsx) 파일만 업로드할 수 있습니다." };
+  }
+  if (file.size > MAX_XLSX_BYTES) {
+    return { ok: false, error: "엑셀 파일은 10MB 이하만 업로드할 수 있습니다." };
+  }
   const buffer = Buffer.from(await file.arrayBuffer());
   return { ok: true, buffer, mime: file.type };
 }
