@@ -19,12 +19,33 @@ type Invoice = {
   raw_product_name: string | null;
   customer_type: string | null;
   created_at: string;
+  scan_started_at: string | null;
   completed_at: string | null;
   created_by_name: string | null;
+  scan_started_by_name: string | null;
   completed_by_name: string | null;
   total_qty: number;
   scanned_qty: number;
 };
+
+// 두 시각 사이의 소요시간을 한국어로 포맷.
+// < 60s: "12초"  /  < 60m: "3분 21초"  /  < 24h: "1시간 8분"  /  >= 24h: "2일 3시간"
+function formatDuration(start: string, end: string): string {
+  const sec = Math.max(
+    0,
+    Math.floor((new Date(end).getTime() - new Date(start).getTime()) / 1000)
+  );
+  if (sec < 60) return `${sec}초`;
+  const min = Math.floor(sec / 60);
+  const remSec = sec % 60;
+  if (min < 60) return remSec > 0 ? `${min}분 ${remSec}초` : `${min}분`;
+  const hr = Math.floor(min / 60);
+  const remMin = min % 60;
+  if (hr < 24) return remMin > 0 ? `${hr}시간 ${remMin}분` : `${hr}시간`;
+  const day = Math.floor(hr / 24);
+  const remHr = hr % 24;
+  return remHr > 0 ? `${day}일 ${remHr}시간` : `${day}일`;
+}
 
 type InvoiceItem = {
   invoice_item_id: number;
@@ -96,17 +117,19 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
          i.recipient_name, i.recipient_phone, i.recipient_address,
          i.recipient_postal_code, i.delivery_note, i.sender_name,
          i.raw_product_name, i.customer_type,
-         i.created_at, i.completed_at,
+         i.created_at, i.scan_started_at, i.completed_at,
          uc.nickname AS created_by_name,
+         us.nickname AS scan_started_by_name,
          uo.nickname AS completed_by_name,
          COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
          COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
        FROM invoices i
-       LEFT JOIN users uc          ON i.created_by   = uc.id
-       LEFT JOIN users uo          ON i.completed_by = uo.id
-       LEFT JOIN invoice_items ii  ON ii.invoice_id  = i.id
+       LEFT JOIN users uc          ON i.created_by      = uc.id
+       LEFT JOIN users us          ON i.scan_started_by = us.id
+       LEFT JOIN users uo          ON i.completed_by    = uo.id
+       LEFT JOIN invoice_items ii  ON ii.invoice_id     = i.id
        WHERE i.id = $1
-       GROUP BY i.id, uc.nickname, uo.nickname`,
+       GROUP BY i.id, uc.nickname, us.nickname, uo.nickname`,
       [id]
     ),
     // 품목 카드용 — image_data(BYTEA)는 SELECT 안 하고 has_image만
@@ -220,6 +243,19 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
               )}
             </dd>
           </div>
+          {invoice.scan_started_at && (
+            <div>
+              <dt className="text-xs text-zinc-500 mb-0.5">검수 시작</dt>
+              <dd className="text-zinc-600 text-xs">
+                {formatDate(invoice.scan_started_at)}
+                {invoice.scan_started_by_name && (
+                  <span className="ml-1 text-zinc-400">
+                    · {invoice.scan_started_by_name}
+                  </span>
+                )}
+              </dd>
+            </div>
+          )}
           {invoice.completed_at && (
             <div>
               <dt className="text-xs text-zinc-500 mb-0.5">검수 완료</dt>
@@ -230,6 +266,14 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
                     · {invoice.completed_by_name}
                   </span>
                 )}
+              </dd>
+            </div>
+          )}
+          {invoice.scan_started_at && invoice.completed_at && (
+            <div>
+              <dt className="text-xs text-zinc-500 mb-0.5">소요 시간</dt>
+              <dd className="text-zinc-800 text-xs font-medium">
+                {formatDuration(invoice.scan_started_at, invoice.completed_at)}
               </dd>
             </div>
           )}
@@ -336,17 +380,20 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
         )}
       </section>
 
-      {/* 검수 시작 (Phase 5 예고) */}
-      <div className="mt-6">
-        <button
-          type="button"
-          disabled
-          title="Phase 5에서 활성화됩니다."
-          className="w-full py-3 rounded-lg text-sm font-medium bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed"
-        >
-          검수 시작 (준비 중)
-        </button>
-      </div>
+      {/* 검수 시작 진입 */}
+      {invoice.status !== "completed" && (
+        <div className="mt-6">
+          <Link
+            href="/warehouse/scan"
+            className="block w-full py-3 rounded-lg text-sm font-medium bg-zinc-900 text-white hover:bg-zinc-800 transition text-center"
+          >
+            🔍 출고 검수로 이동
+          </Link>
+          <p className="text-[11px] text-zinc-400 text-center mt-2">
+            검수 페이지에서 이 송장 바코드({invoice.invoice_no})를 스캔하세요
+          </p>
+        </div>
+      )}
 
       {/* 원본 상품명 (디버깅/감사용) */}
       {invoice.raw_product_name && (
