@@ -31,6 +31,12 @@ export default function Header() {
             // 로그인된 상태
             <>
               <Link
+                href="/warehouse/scan"
+                className="px-3 py-1.5 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition"
+              >
+                🔍 출고 검수
+              </Link>
+              <Link
                 href="/warehouse"
                 className="px-3 py-1.5 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition"
               >
