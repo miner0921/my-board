@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { query } from "@/lib/db";
 import { maskName, maskPhone, maskAddress } from "@/lib/mask";
 import RecipientBlock from "./RecipientBlock";
+import ReopenButton from "./ReopenButton";
 
 type Invoice = {
   id: number;
@@ -21,11 +22,21 @@ type Invoice = {
   created_at: string;
   scan_started_at: string | null;
   completed_at: string | null;
+  completion_reason: string | null;
+  completion_note: string | null;
   created_by_name: string | null;
   scan_started_by_name: string | null;
   completed_by_name: string | null;
   total_qty: number;
   scanned_qty: number;
+};
+
+const COMPLETION_REASON_LABEL: Record<string, string> = {
+  full: "정상 완료",
+  out_of_stock: "재고 부족",
+  customer_cancel: "고객 취소",
+  damaged: "파손",
+  other: "기타",
 };
 
 // 두 시각 사이의 소요시간을 한국어로 포맷.
@@ -47,6 +58,15 @@ function formatDuration(start: string, end: string): string {
   return remHr > 0 ? `${day}일 ${remHr}시간` : `${day}일`;
 }
 
+type ReopenEntry = {
+  id: number;
+  reopened_at: string;
+  reason: string | null;
+  prev_status: string | null;
+  prev_completion_reason: string | null;
+  reopened_by_name: string | null;
+};
+
 type InvoiceItem = {
   invoice_item_id: number;
   item_id: number;
@@ -57,6 +77,7 @@ type InvoiceItem = {
   barcode: string | null;
   has_image: boolean;
   updated_at: string;
+  is_added_on_scan: boolean;
 };
 
 function formatDate(date: string | null) {
@@ -110,7 +131,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
 
   const { id } = await params;
 
-  const [invResult, itemsResult] = await Promise.all([
+  const [invResult, itemsResult, reopensResult] = await Promise.all([
     query(
       `SELECT
          i.id, i.invoice_no, i.order_no, i.status,
@@ -118,6 +139,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
          i.recipient_postal_code, i.delivery_note, i.sender_name,
          i.raw_product_name, i.customer_type,
          i.created_at, i.scan_started_at, i.completed_at,
+         i.completion_reason, i.completion_note,
          uc.nickname AS created_by_name,
          us.nickname AS scan_started_by_name,
          uo.nickname AS completed_by_name,
@@ -137,6 +159,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
       `SELECT
          ii.id AS invoice_item_id,
          ii.item_id, ii.quantity, ii.scanned_count, ii.display_name,
+         ii.is_added_on_scan,
          it.name, it.barcode, it.updated_at,
          (it.image_data IS NOT NULL) AS has_image
        FROM invoice_items ii
@@ -145,11 +168,23 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
        ORDER BY ii.id`,
       [id]
     ),
+    // 재개 이력 (최신순)
+    query(
+      `SELECT r.id, r.reopened_at, r.reason,
+              r.prev_status, r.prev_completion_reason,
+              u.nickname AS reopened_by_name
+         FROM invoice_reopens r
+         LEFT JOIN users u ON r.reopened_by = u.id
+        WHERE r.invoice_id = $1
+        ORDER BY r.reopened_at DESC`,
+      [id]
+    ),
   ]);
 
   if (invResult.rows.length === 0) notFound();
   const invoice: Invoice = invResult.rows[0];
   const items: InvoiceItem[] = itemsResult.rows;
+  const reopens: ReopenEntry[] = reopensResult.rows;
 
   const progressPct =
     invoice.total_qty > 0
@@ -179,6 +214,10 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
             {invoice.status === "completed" ? (
               <span className="px-3 py-1 text-sm rounded bg-green-50 text-green-700 border border-green-200">
                 완료
+              </span>
+            ) : invoice.status === "completed_partial" ? (
+              <span className="px-3 py-1 text-sm rounded bg-amber-50 text-amber-800 border border-amber-300">
+                부분 완료
               </span>
             ) : (
               <span className="px-3 py-1 text-sm rounded bg-amber-50 text-amber-700 border border-amber-200">
@@ -279,6 +318,89 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
           )}
         </dl>
 
+        {/* 결품 완료 정보 (completed_partial인 경우만) */}
+        {invoice.status === "completed_partial" && invoice.completion_reason && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg">
+            <p className="text-xs font-semibold text-amber-900 mb-2">
+              🟡 결품 완료 사유
+            </p>
+            <dl className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-2 text-sm">
+              <div>
+                <dt className="text-[11px] text-amber-700">사유</dt>
+                <dd className="text-amber-900 font-medium">
+                  {COMPLETION_REASON_LABEL[invoice.completion_reason] ??
+                    invoice.completion_reason}
+                </dd>
+              </div>
+              {invoice.completion_note && (
+                <div className="sm:col-span-2">
+                  <dt className="text-[11px] text-amber-700">메모</dt>
+                  <dd className="text-amber-900 text-xs whitespace-pre-wrap">
+                    {invoice.completion_note}
+                  </dd>
+                </div>
+              )}
+            </dl>
+          </div>
+        )}
+
+        {/* 재개 이력 (있을 때) */}
+        {reopens.length > 0 && (
+          <div className="mb-4 p-3 bg-zinc-50 border border-zinc-200 rounded-lg">
+            <p className="text-xs font-semibold text-zinc-700 mb-2">
+              🔄 재개 이력 ({reopens.length}건)
+            </p>
+            <ul className="space-y-2 text-xs">
+              {reopens.map((r) => {
+                const prevLabel =
+                  r.prev_status === "completed_partial"
+                    ? `🟡 부분 완료${
+                        r.prev_completion_reason
+                          ? ` (${COMPLETION_REASON_LABEL[r.prev_completion_reason] ?? r.prev_completion_reason})`
+                          : ""
+                      }`
+                    : r.prev_status === "completed"
+                      ? "✅ 완료"
+                      : r.prev_status ?? "-";
+                const isAuto =
+                  !!r.reason && r.reason.startsWith("수량 추가로 자동 재개");
+                return (
+                  <li
+                    key={r.id}
+                    className={`border-l-2 pl-3 py-0.5 ${
+                      isAuto ? "border-blue-300" : "border-zinc-300"
+                    }`}
+                  >
+                    <p className="text-zinc-600">
+                      {formatDate(r.reopened_at)}
+                      {r.reopened_by_name && (
+                        <span className="text-zinc-400">
+                          {" "}
+                          · {r.reopened_by_name}
+                        </span>
+                      )}
+                      {isAuto && (
+                        <span className="ml-2 inline-block px-1.5 py-0.5 rounded text-[10px] border bg-blue-50 text-blue-700 border-blue-200">
+                          🤖 자동 재개
+                        </span>
+                      )}
+                    </p>
+                    {r.reason && (
+                      <p className="text-zinc-800 mt-0.5">
+                        <span className="text-zinc-500">사유:</span> {r.reason}
+                      </p>
+                    )}
+                    <p className="text-zinc-500 mt-0.5">
+                      이전 상태:{" "}
+                      <span className="text-zinc-700">{prevLabel}</span>
+                    </p>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
         {/* 수령인 (마스킹 + 전체 보기 토글) */}
         <RecipientBlock
           invoiceId={invoice.id}
@@ -312,10 +434,23 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
                 !!it.display_name && it.display_name !== it.name;
               const itemScanComplete =
                 it.scanned_count >= it.quantity && it.quantity > 0;
+              const lack = Math.max(0, it.quantity - it.scanned_count);
+              const isShort =
+                invoice.status === "completed_partial" && lack > 0;
+              const over = it.scanned_count > it.quantity && it.quantity > 0;
+              const overCount = it.scanned_count - it.quantity;
               return (
                 <div
                   key={it.invoice_item_id}
-                  className="border border-zinc-200 rounded-lg overflow-hidden bg-white flex flex-col"
+                  className={`border rounded-lg overflow-hidden bg-white flex flex-col ${
+                    over
+                      ? "border-red-300"
+                      : isShort
+                        ? "border-red-300"
+                        : it.is_added_on_scan
+                          ? "border-amber-300"
+                          : "border-zinc-200"
+                  }`}
                 >
                   {/* 썸네일 */}
                   <div className="aspect-square bg-zinc-50 border-b border-zinc-100 flex items-center justify-center overflow-hidden">
@@ -346,18 +481,35 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
                       </p>
                     )}
 
-                    {/* 수량 + 스캔 진행 */}
-                    <div className="text-xs text-zinc-700 mb-2 flex items-center gap-2">
+                    {/* 수량 + 스캔 진행 + 배지 */}
+                    <div className="text-xs text-zinc-700 mb-2 flex items-center gap-1.5 flex-wrap">
                       <span className="font-medium">×{it.quantity}</span>
                       <span
                         className={`px-1.5 py-0.5 rounded text-[10px] border ${
-                          itemScanComplete
-                            ? "bg-green-50 text-green-700 border-green-200"
-                            : "bg-zinc-50 text-zinc-600 border-zinc-200"
+                          over
+                            ? "bg-red-50 text-red-700 border-red-200"
+                            : itemScanComplete
+                              ? "bg-green-50 text-green-700 border-green-200"
+                              : "bg-zinc-50 text-zinc-600 border-zinc-200"
                         }`}
                       >
                         스캔 {it.scanned_count}/{it.quantity}
                       </span>
+                      {over && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] border bg-red-50 text-red-700 border-red-200">
+                          🔴 초과 +{overCount}
+                        </span>
+                      )}
+                      {it.is_added_on_scan && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] border bg-amber-50 text-amber-700 border-amber-200">
+                          🟡 현장 추가
+                        </span>
+                      )}
+                      {isShort && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] border bg-red-50 text-red-700 border-red-200">
+                          🔴 결품 {lack}
+                        </span>
+                      )}
                     </div>
 
                     {/* 바코드 */}
@@ -380,8 +532,8 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
         )}
       </section>
 
-      {/* 검수 시작 진입 */}
-      {invoice.status !== "completed" && (
+      {/* 검수 시작 진입 (pending) 또는 검수 재개 (completed/partial) */}
+      {invoice.status === "pending" && (
         <div className="mt-6">
           <Link
             href="/warehouse/scan"
@@ -392,6 +544,17 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
           <p className="text-[11px] text-zinc-400 text-center mt-2">
             검수 페이지에서 이 송장 바코드({invoice.invoice_no})를 스캔하세요
           </p>
+        </div>
+      )}
+      {(invoice.status === "completed" ||
+        invoice.status === "completed_partial") && (
+        <div className="mt-6">
+          <ReopenButton
+            invoiceId={invoice.id}
+            invoiceNo={invoice.invoice_no}
+            scannedQty={invoice.scanned_qty}
+            totalQty={invoice.total_qty}
+          />
         </div>
       )}
 

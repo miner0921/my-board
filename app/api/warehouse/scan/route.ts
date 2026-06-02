@@ -178,7 +178,64 @@ export async function POST(request: Request) {
 
     // 현재 송장에 그 품목이 있는지 확인 → 트랜잭션으로 카운트 처리
     const result = await withTransaction(async (client) => {
-      // 송장 + 품목 행 락
+      // 송장 락 (먼저, 데드락 방지 — 항상 invoices → invoice_items 순서)
+      const invSelRes = await client.query(
+        `SELECT id, status, completed_at, completed_by,
+                completion_reason, completion_note
+           FROM invoices
+          WHERE id = $1
+          FOR UPDATE`,
+        [currentInvoiceId]
+      );
+      if (invSelRes.rows.length === 0) {
+        return { kind: "invoice_missing" as const };
+      }
+      const invRow = invSelRes.rows[0] as {
+        id: number;
+        status: string;
+        completed_at: string | null;
+        completed_by: number | null;
+        completion_reason: string | null;
+        completion_note: string | null;
+      };
+      const isInvoiceDone =
+        invRow.status === "completed" ||
+        invRow.status === "completed_partial";
+
+      // 자동 재개 helper — 완료된 송장에 force=true로 추가 시 호출.
+      //   invoice_reopens에 이력 + invoices 완료 필드 NULL 처리.
+      const triggerAutoReopen = async (): Promise<boolean> => {
+        if (!isInvoiceDone) return false;
+        await client.query(
+          `INSERT INTO invoice_reopens
+             (invoice_id, reopened_by, reason,
+              prev_status, prev_completion_reason, prev_completion_note,
+              prev_completed_at, prev_completed_by)
+           VALUES ($1, $2, '수량 추가로 자동 재개', $3, $4, $5, $6, $7)`,
+          [
+            currentInvoiceId,
+            userId,
+            invRow.status,
+            invRow.completion_reason,
+            invRow.completion_note,
+            invRow.completed_at,
+            invRow.completed_by,
+          ]
+        );
+        await client.query(
+          `UPDATE invoices
+              SET status = 'pending',
+                  completed_at = NULL,
+                  completed_by = NULL,
+                  completion_reason = NULL,
+                  completion_note = NULL
+            WHERE id = $1`,
+          [currentInvoiceId]
+        );
+        return true;
+      };
+
+      // 품목 행 락
       const rowsRes = await client.query(
         `SELECT ii.id AS invoice_item_id, ii.item_id, ii.quantity, ii.scanned_count
            FROM invoice_items ii
@@ -195,8 +252,111 @@ export async function POST(request: Request) {
 
       const target = rows.find((r) => r.item_id === matchedItem.id);
 
-      // 송장에 없는 품목 → wrong_item
+      // 송장에 없는 품목
       if (!target) {
+        // force=true → 현장 추가로 invoice_items에 새 행 INSERT
+        if (force) {
+          // 완료된 송장이면 먼저 자동 재개
+          const autoReopened = await triggerAutoReopen();
+
+          const ins = await client.query(
+            `INSERT INTO invoice_items
+               (invoice_id, item_id, quantity, scanned_count, display_name, is_added_on_scan)
+             VALUES ($1, $2, 1, 1, $3, TRUE)
+             RETURNING id AS invoice_item_id`,
+            [currentInvoiceId, matchedItem.id, matchedItem.name]
+          );
+          const newInvoiceItemId = ins.rows[0].invoice_item_id as number;
+
+          // 카드 그리드 표시용 items 정보
+          const itemInfo = await client.query(
+            `SELECT barcode, updated_at,
+                    (image_data IS NOT NULL) AS has_image
+               FROM items WHERE id = $1`,
+            [matchedItem.id]
+          );
+
+          // 첫 스캔 시점 기록 (NULL일 때만)
+          await client.query(
+            `UPDATE invoices
+                SET scan_started_at = COALESCE(scan_started_at, NOW()),
+                    scan_started_by = COALESCE(scan_started_by, $1)
+              WHERE id = $2`,
+            [userId, currentInvoiceId]
+          );
+
+          // 의도적 추가라 is_error=false. 추적용으로 reason은 남김.
+          await client.query(
+            `INSERT INTO scan_logs (invoice_id, item_id, user_id, is_error, error_reason)
+             VALUES ($1, $2, $3, false, 'wrong_item_added')`,
+            [currentInvoiceId, matchedItem.id, userId]
+          );
+
+          // 새 행을 포함한 진행률 재계산
+          const newRows = [
+            ...rows,
+            {
+              invoice_item_id: newInvoiceItemId,
+              item_id: matchedItem.id,
+              quantity: 1,
+              scanned_count: 1,
+            },
+          ];
+          const totalQty = newRows.reduce((s, r) => s + r.quantity, 0);
+          const scannedQty = newRows.reduce(
+            (s, r) => s + Math.min(r.scanned_count, r.quantity),
+            0
+          );
+          const allFilled =
+            newRows.length > 0 &&
+            newRows.every((r) => r.scanned_count >= r.quantity);
+
+          let completedAt: string | null = null;
+          if (allFilled) {
+            const upd = await client.query(
+              `UPDATE invoices
+                  SET status = 'completed',
+                      completed_at = NOW(),
+                      completed_by = $1,
+                      completion_reason = 'full'
+                WHERE id = $2
+                  AND status <> 'completed'
+                  AND status <> 'completed_partial'
+                RETURNING completed_at`,
+              [userId, currentInvoiceId]
+            );
+            if (upd.rows.length > 0) {
+              completedAt = upd.rows[0].completed_at;
+            }
+          }
+
+          return {
+            kind: allFilled && completedAt
+              ? ("force_added_complete" as const)
+              : ("force_added" as const),
+            autoReopened,
+            newItem: {
+              invoice_item_id: newInvoiceItemId,
+              item_id: matchedItem.id,
+              name: matchedItem.name as string,
+              display_name: matchedItem.name as string,
+              quantity: 1,
+              scanned_count: 1,
+              barcode: itemInfo.rows[0]?.barcode ?? null,
+              updated_at: itemInfo.rows[0]?.updated_at ?? new Date().toISOString(),
+              has_image: itemInfo.rows[0]?.has_image ?? false,
+              is_added_on_scan: true,
+            },
+            invoice: {
+              id: currentInvoiceId,
+              scanned_qty: scannedQty,
+              total_qty: totalQty,
+              completed_at: completedAt,
+            },
+          };
+        }
+
+        // force=false → 기존 경고
         await client.query(
           `INSERT INTO scan_logs (invoice_id, item_id, user_id, is_error, error_reason)
            VALUES ($1, $2, $3, true, 'wrong_item')`,
@@ -208,10 +368,31 @@ export async function POST(request: Request) {
         };
       }
 
-      // 카운트 +1 (초과는 허용하되 기록)
+      // 카운트 +1 처리 — 초과 / 완료 송장 추가는 사용자 확인을 받는다.
       const nextCount = target.scanned_count + 1;
-      const isOver = nextCount > target.quantity;
+      const willBeOver = nextCount > target.quantity;
 
+      // 사용자 확인이 필요한 경우:
+      //   1) quantity 초과 (일반 over)
+      //   2) 완료/부분완료 송장에 추가 스캔 (자동 재개 사전 확인)
+      const needsConfirm = !force && (willBeOver || isInvoiceDone);
+
+      if (needsConfirm) {
+        return {
+          kind: "over_confirm" as const,
+          item: {
+            invoice_item_id: target.invoice_item_id,
+            item_id: target.item_id,
+            name: matchedItem.name as string,
+            quantity: target.quantity,
+            scanned_count: target.scanned_count, // 변경 전 값
+          },
+        };
+      }
+
+      // 여기서부터: 정상 카운트(+1) 또는 force=true로 강제 +1
+      // 완료 송장이면 자동 재개 먼저
+      const autoReopened = await triggerAutoReopen();
       await client.query(
         `UPDATE invoice_items SET scanned_count = $1 WHERE id = $2`,
         [nextCount, target.invoice_item_id]
@@ -226,16 +407,16 @@ export async function POST(request: Request) {
         [userId, currentInvoiceId]
       );
 
-      // scan_log
+      // scan_log — 정상이든 강제 over든 사용자 의도이므로 is_error=false.
+      //   reason: 강제 over면 'over_quantity_forced', 정상이면 NULL.
       await client.query(
         `INSERT INTO scan_logs (invoice_id, item_id, user_id, is_error, error_reason)
-         VALUES ($1, $2, $3, $4, $5)`,
+         VALUES ($1, $2, $3, false, $4)`,
         [
           currentInvoiceId,
           matchedItem.id,
           userId,
-          isOver,
-          isOver ? "over_quantity" : null,
+          willBeOver ? "over_quantity_forced" : null,
         ]
       );
 
@@ -261,9 +442,11 @@ export async function POST(request: Request) {
           `UPDATE invoices
               SET status = 'completed',
                   completed_at = NOW(),
-                  completed_by = $1
+                  completed_by = $1,
+                  completion_reason = 'full'
             WHERE id = $2
               AND status <> 'completed'
+              AND status <> 'completed_partial'
             RETURNING completed_at`,
           [userId, currentInvoiceId]
         );
@@ -273,7 +456,12 @@ export async function POST(request: Request) {
       }
 
       return {
-        kind: allFilled && completedAt ? ("complete" as const) : isOver ? ("over" as const) : ("ok" as const),
+        kind: allFilled && completedAt
+          ? ("complete" as const)
+          : willBeOver
+            ? ("over_forced" as const)
+            : ("ok" as const),
+        autoReopened,
         item: {
           invoice_item_id: target.invoice_item_id,
           item_id: target.item_id,
@@ -290,11 +478,83 @@ export async function POST(request: Request) {
       };
     });
 
+    if (result.kind === "invoice_missing") {
+      return NextResponse.json(
+        { type: "scan_unknown", message: "송장을 찾을 수 없습니다." },
+        { status: 404 }
+      );
+    }
+
     if (result.kind === "wrong_item") {
       return NextResponse.json({
         type: "scan_wrong_item",
         item: { name: result.itemName },
-        message: `이 품목은 다른 송장의 품목입니다. 필요하면 해당 송장을 먼저 스캔하세요.`,
+        message: `이 품목은 다른 송장의 품목입니다. 현장에서 추가하거나 [취소] 후 해당 송장을 먼저 스캔하세요.`,
+      });
+    }
+
+    if (result.kind === "force_added" || result.kind === "force_added_complete") {
+      await logAccess({
+        session,
+        action: "invoice.item_force_added",
+        targetType: "invoice",
+        targetId: result.invoice.id,
+        request,
+      });
+      if (result.autoReopened) {
+        await logAccess({
+          session,
+          action: "invoice.auto_reopened",
+          targetType: "invoice",
+          targetId: result.invoice.id,
+          request,
+        });
+      }
+
+      // 완료까지 트리거됐으면 invoice_complete로 통합 응답
+      if (result.kind === "force_added_complete") {
+        const noRes = await query(
+          `SELECT invoice_no FROM invoices WHERE id = $1`,
+          [result.invoice.id]
+        );
+        await logAccess({
+          session,
+          action: "invoice.complete",
+          targetType: "invoice",
+          targetId: result.invoice.id,
+          request,
+        });
+        return NextResponse.json({
+          type: "invoice_complete",
+          auto_reopened: result.autoReopened,
+          item: {
+            invoice_item_id: result.newItem.invoice_item_id,
+            item_id: result.newItem.item_id,
+            name: result.newItem.name,
+            quantity: result.newItem.quantity,
+            scanned_count: result.newItem.scanned_count,
+          },
+          invoice: {
+            id: result.invoice.id,
+            invoice_no: noRes.rows[0]?.invoice_no ?? null,
+            status: "completed",
+            scanned_qty: result.invoice.scanned_qty,
+            total_qty: result.invoice.total_qty,
+            completed_at: result.invoice.completed_at,
+          },
+        });
+      }
+
+      return NextResponse.json({
+        type: "scan_force_added",
+        auto_reopened: result.autoReopened,
+        item: result.newItem,
+        invoice: {
+          id: result.invoice.id,
+          status: "pending",
+          scanned_qty: result.invoice.scanned_qty,
+          total_qty: result.invoice.total_qty,
+        },
       });
     }
 
@@ -304,6 +564,15 @@ export async function POST(request: Request) {
         `SELECT invoice_no FROM invoices WHERE id = $1`,
         [result.invoice.id]
       );
+      if (result.autoReopened) {
+        await logAccess({
+          session,
+          action: "invoice.auto_reopened",
+          targetType: "invoice",
+          targetId: result.invoice.id,
+          request,
+        });
+      }
       await logAccess({
         session,
         action: "invoice.complete",
@@ -313,10 +582,12 @@ export async function POST(request: Request) {
       });
       return NextResponse.json({
         type: "invoice_complete",
+        auto_reopened: result.autoReopened,
         item: result.item,
         invoice: {
           id: result.invoice.id,
           invoice_no: noRes.rows[0]?.invoice_no ?? null,
+          status: "completed",
           scanned_qty: result.invoice.scanned_qty,
           total_qty: result.invoice.total_qty,
           completed_at: result.invoice.completed_at,
@@ -324,24 +595,54 @@ export async function POST(request: Request) {
       });
     }
 
-    if (result.kind === "over") {
+    if (result.kind === "over_confirm") {
       return NextResponse.json({
-        type: "scan_over_quantity",
-        message: `이미 수량을 초과했습니다 (${result.item.scanned_count}/${result.item.quantity})`,
+        type: "scan_over_quantity_confirm",
+        item: result.item,
+        message: "이미 수량만큼 챙긴 품목입니다.",
+      });
+    }
+
+    if (result.kind === "over_forced") {
+      if (result.autoReopened) {
+        await logAccess({
+          session,
+          action: "invoice.auto_reopened",
+          targetType: "invoice",
+          targetId: result.invoice.id,
+          request,
+        });
+      }
+      return NextResponse.json({
+        type: "scan_over_quantity_forced",
+        auto_reopened: result.autoReopened,
         item: result.item,
         invoice: {
           id: result.invoice.id,
+          status: "pending",
           scanned_qty: result.invoice.scanned_qty,
           total_qty: result.invoice.total_qty,
         },
       });
     }
 
+    // ok
+    if (result.autoReopened) {
+      await logAccess({
+        session,
+        action: "invoice.auto_reopened",
+        targetType: "invoice",
+        targetId: result.invoice.id,
+        request,
+      });
+    }
     return NextResponse.json({
       type: "scan_ok",
+      auto_reopened: result.autoReopened,
       item: result.item,
       invoice: {
         id: result.invoice.id,
+        status: "pending",
         scanned_qty: result.invoice.scanned_qty,
         total_qty: result.invoice.total_qty,
       },

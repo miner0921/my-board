@@ -19,6 +19,28 @@ type InvoiceRow = {
   scanned_qty: number;
 };
 
+function statusBadge(status: string) {
+  if (status === "completed") {
+    return (
+      <span className="inline-block px-2 py-0.5 text-xs rounded bg-green-50 text-green-700 border border-green-200">
+        완료
+      </span>
+    );
+  }
+  if (status === "completed_partial") {
+    return (
+      <span className="inline-block px-2 py-0.5 text-xs rounded bg-amber-50 text-amber-800 border border-amber-300">
+        부분 완료
+      </span>
+    );
+  }
+  return (
+    <span className="inline-block px-2 py-0.5 text-xs rounded bg-amber-50 text-amber-700 border border-amber-200">
+      대기
+    </span>
+  );
+}
+
 function formatDateShort(date: string) {
   const d = new Date(date);
   const mm = d.getMonth() + 1;
@@ -142,7 +164,9 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
   const q = (qParam ?? "").trim();
   const sort: SortMode = sortParam === "completed" ? "completed" : "created";
   const status =
-    statusParam === "pending" || statusParam === "completed"
+    statusParam === "pending" ||
+    statusParam === "completed" ||
+    statusParam === "completed_partial"
       ? statusParam
       : "all";
   const customerType =
@@ -162,8 +186,10 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
     );
   }
   if (sort === "completed") {
-    // 완료일 탭에서는 상태 필터 무시하고 강제로 완료된 것만
-    conditions.push(`i.status = 'completed' AND i.completed_at IS NOT NULL`);
+    // 완료일 탭에서는 상태 필터 무시하고 완료/부분완료 모두
+    conditions.push(
+      `i.status IN ('completed', 'completed_partial') AND i.completed_at IS NOT NULL`
+    );
   } else if (status !== "all") {
     params.push(status);
     conditions.push(`i.status = $${params.length}`);
@@ -306,6 +332,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
           <option value="all">상태: 전체</option>
           <option value="pending">대기</option>
           <option value="completed">완료</option>
+          <option value="completed_partial">부분 완료</option>
         </select>
         <select
           name="type"
@@ -370,6 +397,9 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
             const completedCount = g.rows.filter(
               (r) => r.status === "completed"
             ).length;
+            const partialCount = g.rows.filter(
+              (r) => r.status === "completed_partial"
+            ).length;
             const defaultOpen = key === "today" || key === "yesterday";
             return (
               <InvoiceGroup
@@ -377,6 +407,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
                 label={labelFor(key, g.sample)}
                 totalCount={g.rows.length}
                 completedCount={completedCount}
+                partialCount={partialCount}
                 defaultOpen={defaultOpen}
               >
                 <InvoiceTable rows={g.rows} sort={sort} />
@@ -449,15 +480,7 @@ function InvoiceTable({
               {inv.scanned_qty} / {inv.total_qty}
             </div>
             <div className="sm:col-span-1 sm:text-center">
-              {inv.status === "completed" ? (
-                <span className="inline-block px-2 py-0.5 text-xs rounded bg-green-50 text-green-700 border border-green-200">
-                  완료
-                </span>
-              ) : (
-                <span className="inline-block px-2 py-0.5 text-xs rounded bg-amber-50 text-amber-700 border border-amber-200">
-                  대기
-                </span>
-              )}
+              {statusBadge(inv.status)}
             </div>
             <div className="sm:col-span-2 sm:text-center text-zinc-500 text-xs">
               {dateText}

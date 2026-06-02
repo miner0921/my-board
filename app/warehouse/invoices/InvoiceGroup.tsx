@@ -6,6 +6,7 @@ type Props = {
   label: string;
   totalCount: number;
   completedCount: number;
+  partialCount?: number;
   defaultOpen?: boolean;
   children: ReactNode;
 };
@@ -16,6 +17,7 @@ export default function InvoiceGroup({
   label,
   totalCount,
   completedCount,
+  partialCount = 0,
   defaultOpen = false,
   children,
 }: Props) {
@@ -42,6 +44,11 @@ export default function InvoiceGroup({
             {completedCount > 0 && (
               <span className="ml-1 text-green-700">
                 · 완료 {completedCount}
+              </span>
+            )}
+            {partialCount > 0 && (
+              <span className="ml-1 text-amber-700">
+                · 부분 {partialCount}
               </span>
             )}
           </span>
