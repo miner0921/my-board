@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { query } from "@/lib/db";
-import { maskName, maskPhone } from "@/lib/mask";
 import InvoiceGroup from "./InvoiceGroup";
 
 type InvoiceRow = {
@@ -466,10 +465,12 @@ function InvoiceTable({
               <span className="sm:hidden text-zinc-400 text-xs mr-1">
                 수령인:
               </span>
-              {maskName(inv.recipient_name)}
-              <span className="text-xs text-zinc-400 ml-1">
-                {maskPhone(inv.recipient_phone)}
-              </span>
+              {inv.recipient_name ?? <span className="text-zinc-300">-</span>}
+              {inv.recipient_phone && (
+                <span className="text-xs text-zinc-400 ml-1">
+                  {inv.recipient_phone}
+                </span>
+              )}
             </div>
             <div className="sm:col-span-1 sm:text-center">
               <span className="sm:hidden text-zinc-400 text-xs mr-1">분류:</span>

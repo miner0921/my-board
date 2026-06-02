@@ -183,8 +183,9 @@ export async function PUT(request: Request, { params }: RouteContext) {
   }
 }
 
-// DELETE: 품목 삭제 (본인만)
-// 송장(invoice_items)에서 참조 중이면 FK 위반으로 차단
+// DELETE: 품목 삭제 (관리자만)
+// Phase 6: 본인 소유 제한 → 관리자만으로 정책 변경.
+// 송장(invoice_items)에서 참조 중이면 FK 위반으로 차단.
 export async function DELETE(request: Request, { params }: RouteContext) {
   try {
     const session = await auth();
@@ -194,23 +195,26 @@ export async function DELETE(request: Request, { params }: RouteContext) {
         { status: 401 }
       );
     }
+    const role = ((session.user as { role?: string }).role ?? "user") as
+      | "user"
+      | "admin";
+    if (role !== "admin") {
+      return NextResponse.json(
+        { error: "관리자만 삭제할 수 있습니다." },
+        { status: 403 }
+      );
+    }
 
     const { id } = await params;
 
     const check = await query(
-      "SELECT created_by FROM items WHERE id = $1",
+      "SELECT 1 FROM items WHERE id = $1",
       [id]
     );
     if (check.rows.length === 0) {
       return NextResponse.json(
         { error: "품목을 찾을 수 없습니다." },
         { status: 404 }
-      );
-    }
-    if (String(check.rows[0].created_by) !== session.user.id) {
-      return NextResponse.json(
-        { error: "삭제 권한이 없습니다." },
-        { status: 403 }
       );
     }
 

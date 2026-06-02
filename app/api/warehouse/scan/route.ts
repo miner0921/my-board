@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { query, withTransaction } from "@/lib/db";
 import { auth } from "@/auth";
 import { logAccess } from "@/lib/audit";
-import { maskName, maskPhone, maskAddress } from "@/lib/mask";
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/warehouse/scan
@@ -656,8 +655,8 @@ export async function POST(request: Request) {
   }
 }
 
-// invoice_start 응답용 — 송장 전체 정보 + 품목 목록.
-// 평문 PII는 절대 반환하지 않고 서버에서 마스킹해서 내려보냄.
+// invoice_start 응답용 — 송장 핵심 정보 + 품목 목록만.
+// 검수 화면은 바코드 작업이라 수령인 정보는 보내지 않는다.
 async function loadInvoiceFull(invoiceId: number): Promise<{
   invoice: Record<string, unknown>;
   items: Array<Record<string, unknown>>;
@@ -666,8 +665,6 @@ async function loadInvoiceFull(invoiceId: number): Promise<{
     query(
       `SELECT
          i.id, i.invoice_no, i.order_no, i.status,
-         i.recipient_name, i.recipient_phone, i.recipient_address,
-         i.recipient_postal_code, i.delivery_note, i.sender_name,
          i.customer_type, i.created_at,
          COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
          COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
@@ -698,13 +695,7 @@ async function loadInvoiceFull(invoiceId: number): Promise<{
       invoice_no: raw.invoice_no,
       order_no: raw.order_no,
       status: raw.status,
-      sender_name: raw.sender_name,
       customer_type: raw.customer_type,
-      delivery_note: raw.delivery_note,
-      recipient_postal_code: raw.recipient_postal_code,
-      recipient_name_masked: maskName(raw.recipient_name),
-      recipient_phone_masked: maskPhone(raw.recipient_phone),
-      recipient_address_masked: maskAddress(raw.recipient_address),
       total_qty: raw.total_qty,
       scanned_qty: raw.scanned_qty,
     },

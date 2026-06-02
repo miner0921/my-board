@@ -41,6 +41,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return null;
         }
 
+        // 비활성화 계정은 비번 검증 전에 차단.
+        // 일반 실패와 구분하지 않고 동일하게 null 반환해 사용자 존재 정보 누출 방지.
+        if (user.is_active === false) {
+          await recordLoginAttempt({ username: usernameForLog, ip, success: false });
+          return null;
+        }
+
         const isValid = await bcrypt.compare(password, user.password);
         if (!isValid) {
           await recordLoginAttempt({ username: usernameForLog, ip, success: false });
@@ -53,6 +60,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           id: String(user.id),
           name: user.nickname,
           username: user.username,
+          role: (user.role ?? "user") as "user" | "admin",
+          mustChangePassword: user.must_change_password === true,
         };
       },
     }),

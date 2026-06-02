@@ -2,9 +2,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { query } from "@/lib/db";
-import { maskName, maskPhone, maskAddress } from "@/lib/mask";
-import RecipientBlock from "./RecipientBlock";
 import ReopenButton from "./ReopenButton";
+import DeleteInvoiceButton from "./DeleteInvoiceButton";
 
 type Invoice = {
   id: number;
@@ -128,6 +127,8 @@ type PageProps = {
 export default async function InvoiceDetailPage({ params }: PageProps) {
   const session = await auth();
   if (!session) redirect("/login");
+  const isAdmin =
+    ((session.user as { role?: string }).role ?? "user") === "admin";
 
   const { id } = await params;
 
@@ -401,15 +402,44 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
           </div>
         )}
 
-        {/* 수령인 (마스킹 + 전체 보기 토글) */}
-        <RecipientBlock
-          invoiceId={invoice.id}
-          maskedName={maskName(invoice.recipient_name)}
-          maskedPhone={maskPhone(invoice.recipient_phone)}
-          maskedAddress={maskAddress(invoice.recipient_address)}
-          postalCode={invoice.recipient_postal_code}
-          deliveryNote={invoice.delivery_note}
-        />
+        {/* 수령인 (평문) */}
+        <div className="pt-4">
+          <p className="text-xs text-zinc-500 mb-2">수령인</p>
+          <dl className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-3 text-sm">
+            <div>
+              <dt className="text-xs text-zinc-500 mb-0.5">성명</dt>
+              <dd className="text-zinc-800">
+                {invoice.recipient_name ?? "-"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-zinc-500 mb-0.5">전화</dt>
+              <dd className="text-zinc-800 font-mono text-xs">
+                {invoice.recipient_phone ?? "-"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-zinc-500 mb-0.5">우편번호</dt>
+              <dd className="text-zinc-800 font-mono text-xs">
+                {invoice.recipient_postal_code ?? "-"}
+              </dd>
+            </div>
+            <div className="sm:col-span-3">
+              <dt className="text-xs text-zinc-500 mb-0.5">주소</dt>
+              <dd className="text-zinc-800 text-xs">
+                {invoice.recipient_address ?? "-"}
+              </dd>
+            </div>
+            {invoice.delivery_note && (
+              <div className="sm:col-span-3">
+                <dt className="text-xs text-zinc-500 mb-0.5">배송메시지</dt>
+                <dd className="text-zinc-600 text-xs whitespace-pre-wrap">
+                  {invoice.delivery_note}
+                </dd>
+              </div>
+            )}
+          </dl>
+        </div>
       </article>
 
       {/* 품목 목록 */}
@@ -546,14 +576,24 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
           </p>
         </div>
       )}
-      {(invoice.status === "completed" ||
-        invoice.status === "completed_partial") && (
-        <div className="mt-6">
-          <ReopenButton
+      {isAdmin &&
+        (invoice.status === "completed" ||
+          invoice.status === "completed_partial") && (
+          <div className="mt-6">
+            <ReopenButton
+              invoiceId={invoice.id}
+              invoiceNo={invoice.invoice_no}
+              scannedQty={invoice.scanned_qty}
+              totalQty={invoice.total_qty}
+            />
+          </div>
+        )}
+
+      {isAdmin && (
+        <div className="mt-4">
+          <DeleteInvoiceButton
             invoiceId={invoice.id}
             invoiceNo={invoice.invoice_no}
-            scannedQty={invoice.scanned_qty}
-            totalQty={invoice.total_qty}
           />
         </div>
       )}

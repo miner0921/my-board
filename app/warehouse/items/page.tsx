@@ -147,9 +147,12 @@ export default async function ItemListPage({ searchParams }: PageProps) {
           {items.map((item) => {
             const isOwner =
               session.user?.id === String(item.created_by ?? "");
-            // 자동 등록 품목은 누구나 수정 가능 (협업). 삭제는 본인만.
+            const isAdmin =
+              ((session.user as { role?: string }).role ?? "user") === "admin";
+            // 자동 등록 품목은 누구나 수정 가능 (협업).
+            // 삭제는 Phase 6부터 관리자 전용.
             const canEdit = item.is_auto_created || isOwner;
-            const canDelete = isOwner;
+            const canDelete = isAdmin;
             return (
               <div
                 key={item.id}

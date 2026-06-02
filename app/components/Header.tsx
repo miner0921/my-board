@@ -42,6 +42,21 @@ export default function Header() {
               >
                 바코드 관리
               </Link>
+              {(session.user as { role?: string })?.role === "admin" && (
+                <Link
+                  href="/admin/users"
+                  className="px-3 py-1.5 text-sm border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 transition"
+                >
+                  사용자 관리
+                </Link>
+              )}
+              <Link
+                href="/profile/password"
+                className="text-sm text-zinc-600 hover:text-zinc-900 hidden sm:inline"
+                title="비밀번호 변경"
+              >
+                🔑
+              </Link>
               <span className="text-sm text-zinc-700">
                 <span className="font-medium">{session.user?.name}</span>님
               </span>

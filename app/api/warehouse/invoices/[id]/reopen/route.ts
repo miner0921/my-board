@@ -26,6 +26,15 @@ export async function POST(request: Request, { params }: RouteContext) {
         { status: 401 }
       );
     }
+    const role = ((session.user as { role?: string }).role ?? "user") as
+      | "user"
+      | "admin";
+    if (role !== "admin") {
+      return NextResponse.json(
+        { error: "관리자만 수동 재개할 수 있습니다." },
+        { status: 403 }
+      );
+    }
     const userId = Number(session.user.id);
 
     const { id } = await params;

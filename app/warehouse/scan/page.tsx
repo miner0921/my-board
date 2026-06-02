@@ -27,13 +27,7 @@ type InvoicePayload = {
   invoice_no: string;
   order_no: string | null;
   status: string;
-  sender_name: string | null;
   customer_type: string | null;
-  delivery_note: string | null;
-  recipient_postal_code: string | null;
-  recipient_name_masked: string;
-  recipient_phone_masked: string;
-  recipient_address_masked: string;
   total_qty: number;
   scanned_qty: number;
 };
@@ -750,26 +744,11 @@ export default function ScanPage() {
             )}
           </div>
 
-          <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-sm mb-4">
+          <dl className="text-sm mb-4">
             <div>
               <dt className="text-[11px] text-zinc-500">주문번호</dt>
               <dd className="font-mono text-xs text-zinc-800">
                 {invoice.order_no ?? <span className="text-zinc-300">-</span>}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[11px] text-zinc-500">송하인</dt>
-              <dd className="text-xs text-zinc-800">
-                {invoice.sender_name ?? <span className="text-zinc-300">-</span>}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[11px] text-zinc-500">수령인</dt>
-              <dd className="text-xs text-zinc-800">
-                {invoice.recipient_name_masked}
-                <span className="text-zinc-400 ml-1 font-mono">
-                  · {invoice.recipient_phone_masked}
-                </span>
               </dd>
             </div>
           </dl>

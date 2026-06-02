@@ -14,18 +14,41 @@ export default {
     signIn: "/login",
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
         token.username = (user as { username: string }).username;
+        token.role = (user as { role?: string }).role ?? "user";
+        token.mustChangePassword =
+          (user as { mustChangePassword?: boolean }).mustChangePassword === true;
+      }
+      // 비번 변경 직후 session.update()로 mustChangePassword 갱신 가능하게
+      if (trigger === "update" && session) {
+        const next = session as {
+          mustChangePassword?: boolean;
+          role?: string;
+        };
+        if (typeof next.mustChangePassword === "boolean") {
+          token.mustChangePassword = next.mustChangePassword;
+        }
+        if (typeof next.role === "string") {
+          token.role = next.role;
+        }
       }
       return token;
     },
     async session({ session, token }) {
       if (token && session.user) {
         session.user.id = token.id as string;
-        (session.user as { username?: string }).username =
-          token.username as string;
+        const su = session.user as {
+          username?: string;
+          role?: "user" | "admin";
+          mustChangePassword?: boolean;
+        };
+        su.username = token.username as string;
+        su.role = (token.role as "user" | "admin") ?? "user";
+        su.mustChangePassword =
+          (token as { mustChangePassword?: boolean }).mustChangePassword === true;
       }
       return session;
     },
