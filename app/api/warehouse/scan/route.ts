@@ -526,13 +526,9 @@ export async function POST(request: Request) {
         return NextResponse.json({
           type: "invoice_complete",
           auto_reopened: result.autoReopened,
-          item: {
-            invoice_item_id: result.newItem.invoice_item_id,
-            item_id: result.newItem.item_id,
-            name: result.newItem.name,
-            quantity: result.newItem.quantity,
-            scanned_count: result.newItem.scanned_count,
-          },
+          // 신규 현장 추가 품목 → 카드 렌더링용 전체 필드를 그대로 전송.
+          // (클라이언트가 배열에 없으면 카드를 추가하도록 upsert 처리)
+          item: result.newItem,
           invoice: {
             id: result.invoice.id,
             invoice_no: noRes.rows[0]?.invoice_no ?? null,

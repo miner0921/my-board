@@ -201,6 +201,35 @@ export default function ScanPage() {
     setLastScannedId(newItem.invoice_item_id);
   };
 
+  // 카운트 갱신 + 신규 행 보강(upsert). 완료 송장에 현장 추가 시
+  // 즉시 재완료되어 invoice_complete로 응답될 때, 배열에 없는 신규
+  // 품목 카드도 함께 추가하기 위함. (없으면 추가 / 있으면 카운트만 갱신)
+  const upsertItem = (item: { invoice_item_id: number; scanned_count: number } & Partial<ItemPayload>) => {
+    setItems((prev) => {
+      const exists = prev.some((it) => it.invoice_item_id === item.invoice_item_id);
+      if (exists) {
+        return prev.map((it) =>
+          it.invoice_item_id === item.invoice_item_id
+            ? { ...it, scanned_count: item.scanned_count }
+            : it
+        );
+      }
+      // 신규 행: 카드 렌더링에 필요한 필드 기본값 보강 후 추가
+      return [
+        ...prev,
+        {
+          display_name: null,
+          barcode: null,
+          has_image: false,
+          updated_at: new Date().toISOString(),
+          is_added_on_scan: true,
+          ...item,
+        } as ItemPayload,
+      ];
+    });
+    setLastScannedId(item.invoice_item_id);
+  };
+
   // ── 핵심: 바코드 스캔 처리 ───────────────────────────────
   const sendScan = async (
     barcode: string,
@@ -298,13 +327,15 @@ export default function ScanPage() {
     | {
         type: "invoice_complete";
         auto_reopened?: boolean;
+        // 완료 응답의 item: 기존 품목 완료 시엔 기본 5개 필드,
+        // 현장 추가로 재완료될 땐 신규 카드용 ItemPayload 전 필드가 옴.
         item: {
           invoice_item_id: number;
           item_id: number;
           name: string;
           quantity: number;
           scanned_count: number;
-        };
+        } & Partial<ItemPayload>;
         invoice: {
           id: number;
           invoice_no: string;
@@ -430,7 +461,9 @@ export default function ScanPage() {
         return;
       }
       case "invoice_complete": {
-        updateItemCount(data.item.invoice_item_id, data.item.scanned_count);
+        // upsert: 기존 품목이면 카운트 갱신, 현장 추가로 재완료된 신규
+        // 품목이면 카드를 배열에 추가 (배열에 없으면 안 보이던 버그 수정)
+        upsertItem(data.item);
         // 완료 응답은 invoice 새로 완료된 상태로 set. 이전 배너는
         // 새 배너로 갱신되므로 applyAutoReopen은 호출 안 함.
         setInvoice((prev) =>
