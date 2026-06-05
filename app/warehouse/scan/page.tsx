@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import WrongItemModal from "./WrongItemModal";
 import InvoiceChangeModal from "./InvoiceChangeModal";
 import PartialCompleteModal from "./PartialCompleteModal";
 import CancelInvoiceModal from "./CancelInvoiceModal";
 import OverQuantityModal from "./OverQuantityModal";
+import { CheckCircle2, AlertCircle } from "lucide-react";
 import {
   beepComplete,
   beepError,
@@ -384,7 +384,7 @@ export default function ScanPage() {
         setLastScannedId(null);
         setCompleteBanner(null); // 새 송장 진입 → 이전 완료 배너 해제
         setStatusKind("ok");
-        setStatusMsg(`📦 송장 ${data.invoice.invoice_no} 검수 시작`);
+        setStatusMsg(`송장 ${data.invoice.invoice_no} 검수 시작`);
         triggerFlash("ok");
         beepSuccess();
         vibrate(50);
@@ -416,8 +416,8 @@ export default function ScanPage() {
         // force=true였는데 정상 카운트로 빠진 경우 → 안내 메시지
         setStatusMsg(
           wasForce
-            ? `✓ 이미 송장에 있던 품목입니다. 정상 카운트되었습니다. (${data.item.scanned_count}/${data.item.quantity})`
-            : `✓ ${data.item.name} (${data.item.scanned_count}/${data.item.quantity})`
+            ? `이미 송장에 있던 품목입니다. 정상 카운트되었습니다. (${data.item.scanned_count}/${data.item.quantity})`
+            : `${data.item.name} (${data.item.scanned_count}/${data.item.quantity})`
         );
         triggerFlash("ok");
         beepSuccess();
@@ -452,8 +452,8 @@ export default function ScanPage() {
         setStatusKind("ok");
         setStatusMsg(
           data.auto_reopened
-            ? `🔄 ${data.item.name} 자동 재개 + 수량 추가 (${data.item.scanned_count}/${data.item.quantity})`
-            : `🟡 ${data.item.name} 수량 추가 (${data.item.scanned_count}/${data.item.quantity})`
+            ? `${data.item.name} 자동 재개 + 수량 추가 (${data.item.scanned_count}/${data.item.quantity})`
+            : `${data.item.name} 수량 추가 (${data.item.scanned_count}/${data.item.quantity})`
         );
         triggerFlash("ok");
         beepSuccess();
@@ -478,7 +478,7 @@ export default function ScanPage() {
         );
         setStatusKind("ok");
         setStatusMsg(
-          data.auto_reopened ? `✅ 자동 재개 후 다시 완료!` : `✅ 송장 완료!`
+          data.auto_reopened ? `자동 재개 후 다시 완료!` : `송장 완료!`
         );
         triggerFlash("complete");
         beepComplete();
@@ -501,8 +501,8 @@ export default function ScanPage() {
         setStatusKind("ok");
         setStatusMsg(
           data.auto_reopened
-            ? `🔄 ${data.item.name} 자동 재개 + 현장 추가 (1/1)`
-            : `🟡 ${data.item.name} 현장 추가 (1/1)`
+            ? `${data.item.name} 자동 재개 + 현장 추가 (1/1)`
+            : `${data.item.name} 현장 추가 (1/1)`
         );
         triggerFlash("ok");
         beepSuccess();
@@ -521,7 +521,7 @@ export default function ScanPage() {
       }
       case "scan_unknown": {
         setStatusKind("error");
-        setStatusMsg(`❌ ${data.message}`);
+        setStatusMsg(`${data.message}`);
         triggerFlash("error");
         beepError();
         vibrate([100, 50, 100]);
@@ -529,7 +529,7 @@ export default function ScanPage() {
       }
       case "scan_no_invoice": {
         setStatusKind("error");
-        setStatusMsg(`📦 ${data.message}`);
+        setStatusMsg(`${data.message}`);
         triggerFlash("error");
         beepError();
         vibrate([100, 50, 100]);
@@ -616,7 +616,7 @@ export default function ScanPage() {
       prev ? { ...prev, status: "completed_partial" } : prev
     );
     setStatusKind("ok");
-    setStatusMsg("🟡 결품 완료 처리됨");
+    setStatusMsg("결품 완료 처리됨");
     triggerFlash("partial");
     beepComplete();
     vibrate([200, 100, 200]);
@@ -656,15 +656,9 @@ export default function ScanPage() {
     invoice.scanned_qty > 0;
 
   return (
-    <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
-      {/* 상단 */}
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <Link
-          href="/warehouse"
-          className="text-sm text-zinc-500 hover:text-zinc-900"
-        >
-          ← 대시보드
-        </Link>
+    <div className="max-w-5xl">
+      {/* 상단: 현재 송장 표시 */}
+      <div className="flex items-center justify-end gap-3 mb-4">
         {invoice ? (
           <div className="text-right min-w-0">
             <p className="text-[10px] text-zinc-500">현재 송장</p>
@@ -687,8 +681,12 @@ export default function ScanPage() {
           }`}
         >
           <div className="flex items-start gap-3">
-            <div className="text-3xl">
-              {completeBanner.kind === "partial" ? "🟡" : "✅"}
+            <div className="shrink-0 mt-0.5">
+              {completeBanner.kind === "partial" ? (
+                <AlertCircle size={28} strokeWidth={1.75} className="text-amber-600" />
+              ) : (
+                <CheckCircle2 size={28} strokeWidth={1.75} className="text-green-600" />
+              )}
             </div>
             <div className="flex-1">
               <p className="text-base font-bold">
@@ -750,7 +748,7 @@ export default function ScanPage() {
         />
         {statusMsg && (
           <p
-            className={`mt-3 text-sm font-medium ${
+            className={`mt-3 text-sm font-medium flex items-center gap-1.5 ${
               statusKind === "ok"
                 ? "text-green-700"
                 : statusKind === "error"
@@ -758,6 +756,12 @@ export default function ScanPage() {
                   : "text-zinc-600"
             }`}
           >
+            {statusKind === "ok" && (
+              <CheckCircle2 size={16} strokeWidth={2} className="shrink-0" />
+            )}
+            {statusKind === "error" && (
+              <AlertCircle size={16} strokeWidth={2} className="shrink-0" />
+            )}
             {statusMsg}
           </p>
         )}
@@ -893,7 +897,7 @@ export default function ScanPage() {
                         </span>
                         {isAdded && (
                           <span className="px-1.5 py-0.5 rounded text-[10px] border bg-amber-50 text-amber-700 border-amber-200">
-                            🟡 현장 추가
+                            현장 추가
                           </span>
                         )}
                       </div>
@@ -989,6 +993,6 @@ export default function ScanPage() {
           onConfirm={handleCancelInvoiceConfirm}
         />
       )}
-    </main>
+    </div>
   );
 }

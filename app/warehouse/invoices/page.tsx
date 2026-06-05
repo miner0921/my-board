@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { query } from "@/lib/db";
+import { Upload } from "lucide-react";
 import InvoiceGroup from "./InvoiceGroup";
 
 type InvoiceRow = {
@@ -253,29 +254,19 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
   };
 
   return (
-    <main className="max-w-6xl mx-auto px-6 py-8">
-      {/* 헤더 */}
-      <div className="mb-6">
+    <div className="max-w-6xl">
+      {/* 액션 바 */}
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <p className="text-sm text-zinc-500">
+          발주서와 송장 파일을 업로드하면 자동으로 등록됩니다
+        </p>
         <Link
-          href="/warehouse"
-          className="text-sm text-zinc-500 hover:text-zinc-900"
+          href="/warehouse/upload"
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition font-medium self-start sm:self-auto"
         >
-          ← 바코드 관리
+          <Upload size={16} strokeWidth={1.75} />
+          송장 업로드
         </Link>
-        <div className="mt-2 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-zinc-900">송장 관리</h1>
-            <p className="text-sm text-zinc-500 mt-1">
-              발주서와 송장 파일을 업로드하면 자동으로 등록됩니다
-            </p>
-          </div>
-          <Link
-            href="/warehouse/upload"
-            className="px-4 py-2 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition font-medium self-start sm:self-auto"
-          >
-            + 송장 업로드
-          </Link>
-        </div>
       </div>
 
       {/* 정렬 탭 */}
@@ -383,9 +374,10 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
             </p>
             <Link
               href="/warehouse/upload"
-              className="inline-block px-6 py-3 bg-zinc-900 text-white rounded-lg text-sm font-medium hover:bg-zinc-800 transition"
+              className="inline-flex items-center gap-1.5 px-6 py-3 bg-zinc-900 text-white rounded-lg text-sm font-medium hover:bg-zinc-800 transition"
             >
-              📤 송장 업로드
+              <Upload size={16} strokeWidth={1.75} />
+              송장 업로드
             </Link>
           </div>
         )
@@ -415,7 +407,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
           })}
         </div>
       )}
-    </main>
+    </div>
   );
 }
 

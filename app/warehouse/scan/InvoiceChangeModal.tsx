@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { AlertTriangle } from "lucide-react";
 
 type Props = {
   currentInvoice: {
@@ -53,7 +54,11 @@ export default function InvoiceChangeModal({
     >
       <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
         <div className="flex items-start gap-3 mb-4">
-          <div className="text-3xl">⚠️</div>
+          <AlertTriangle
+            size={28}
+            strokeWidth={1.75}
+            className="shrink-0 text-amber-500 mt-0.5"
+          />
           <div className="flex-1">
             <h2 className="text-lg font-semibold text-zinc-900">
               송장 변경 확인

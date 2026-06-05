@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { query } from "@/lib/db";
+import { Plus, Upload } from "lucide-react";
 import DeleteButton from "./DeleteButton";
 
 type Item = {
@@ -60,36 +61,27 @@ export default async function ItemListPage({ searchParams }: PageProps) {
   const items: Item[] = result.rows;
 
   return (
-    <main className="max-w-6xl mx-auto px-6 py-8">
-      {/* 헤더 */}
-      <div className="mb-6">
-        <Link
-          href="/warehouse"
-          className="text-sm text-zinc-500 hover:text-zinc-900"
-        >
-          ← 바코드 관리
-        </Link>
-        <div className="mt-2 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-zinc-900">품목 관리</h1>
-            <p className="text-sm text-zinc-500 mt-1">
-              출고할 품목을 등록하고 관리합니다
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/warehouse/items/bulk"
-              className="px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition"
-            >
-              📥 CSV 대량 등록
-            </Link>
-            <Link
-              href="/warehouse/items/new"
-              className="px-4 py-2 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition font-medium"
-            >
-              + 새 품목 등록
-            </Link>
-          </div>
+    <div className="max-w-6xl">
+      {/* 액션 바 */}
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <p className="text-sm text-zinc-500">
+          출고할 품목을 등록하고 관리합니다
+        </p>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/warehouse/items/bulk"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition"
+          >
+            <Upload size={16} strokeWidth={1.75} />
+            CSV 대량 등록
+          </Link>
+          <Link
+            href="/warehouse/items/new"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition font-medium"
+          >
+            <Plus size={16} strokeWidth={2} />
+            새 품목 등록
+          </Link>
         </div>
       </div>
 
@@ -218,6 +210,6 @@ export default async function ItemListPage({ searchParams }: PageProps) {
           })}
         </div>
       )}
-    </main>
+    </div>
   );
 }

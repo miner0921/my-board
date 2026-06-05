@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import Link from "next/link";
+import { Lock, CheckCircle2 } from "lucide-react";
 
 // 비밀번호 변경 페이지.
 //   - 로그인 사용자 모두 접근 가능.
@@ -27,11 +27,7 @@ export default function ChangePasswordPage() {
   }, []);
 
   if (status === "loading") {
-    return (
-      <main className="max-w-md mx-auto px-6 py-8 text-sm text-zinc-500">
-        로딩 중...
-      </main>
-    );
+    return <div className="text-sm text-zinc-500">로딩 중...</div>;
   }
   if (status === "unauthenticated") {
     router.push("/login");
@@ -87,33 +83,24 @@ export default function ChangePasswordPage() {
   };
 
   return (
-    <main className="max-w-md mx-auto px-6 py-8">
-      {!mustChange && (
-        <Link
-          href="/warehouse"
-          className="text-sm text-zinc-500 hover:text-zinc-900"
-        >
-          ← 대시보드
-        </Link>
-      )}
-
-      <h1 className="text-2xl font-bold text-zinc-900 mt-2 mb-6">
-        비밀번호 변경
-      </h1>
-
+    <div className="max-w-md">
       {mustChange && (
-        <div className="mb-5 p-3 bg-amber-50 border border-amber-300 rounded-lg text-sm text-amber-900">
-          🔒 임시 비밀번호로 로그인했습니다.
-          <br />
-          <span className="text-xs text-amber-800">
-            새 비밀번호를 설정해야 다른 기능을 사용할 수 있습니다.
+        <div className="mb-5 p-3 bg-amber-50 border border-amber-300 rounded-lg text-sm text-amber-900 flex items-start gap-2">
+          <Lock size={16} strokeWidth={1.75} className="shrink-0 mt-0.5" />
+          <span>
+            임시 비밀번호로 로그인했습니다.
+            <br />
+            <span className="text-xs text-amber-800">
+              새 비밀번호를 설정해야 다른 기능을 사용할 수 있습니다.
+            </span>
           </span>
         </div>
       )}
 
       {success ? (
-        <div className="p-4 bg-green-50 border border-green-300 rounded-lg text-sm text-green-800">
-          ✅ 비밀번호가 변경되었습니다. 잠시 후 이동합니다...
+        <div className="p-4 bg-green-50 border border-green-300 rounded-lg text-sm text-green-800 flex items-center gap-2">
+          <CheckCircle2 size={18} strokeWidth={1.75} className="shrink-0" />
+          비밀번호가 변경되었습니다. 잠시 후 이동합니다...
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -190,6 +177,6 @@ export default function ChangePasswordPage() {
           </button>
         </form>
       )}
-    </main>
+    </div>
   );
 }

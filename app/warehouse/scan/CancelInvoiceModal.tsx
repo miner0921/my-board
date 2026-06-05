@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { DoorOpen } from "lucide-react";
 
 type Props = {
   invoiceNo: string;
@@ -50,7 +51,11 @@ export default function CancelInvoiceModal({
     >
       <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
         <div className="flex items-start gap-3 mb-4">
-          <div className="text-3xl">🚪</div>
+          <DoorOpen
+            size={28}
+            strokeWidth={1.75}
+            className="shrink-0 text-zinc-500 mt-0.5"
+          />
           <div className="flex-1">
             <h2 className="text-lg font-semibold text-zinc-900">
               진행 중인 검수를 취소합니다

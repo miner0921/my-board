@@ -3,7 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import Link from "next/link";
+import {
+  CheckCircle2,
+  AlertTriangle,
+  Plus,
+  StickyNote,
+  Check,
+  X,
+} from "lucide-react";
 
 type PreviewItem = {
   rawName: string;
@@ -175,20 +182,11 @@ export default function UploadPage() {
   const canAnalyze = !!orderFile && !!invoiceFile && !analyzing && !confirming;
 
   if (status === "loading") {
-    return (
-      <div className="max-w-4xl mx-auto px-6 py-8 text-zinc-500">로딩 중...</div>
-    );
+    return <div className="text-zinc-500">로딩 중...</div>;
   }
 
   return (
-    <main className="max-w-4xl mx-auto px-6 py-8">
-      <Link
-        href="/warehouse/invoices"
-        className="text-sm text-zinc-500 hover:text-zinc-900"
-      >
-        ← 송장 목록
-      </Link>
-      <h1 className="text-2xl font-bold mt-2 mb-1">송장 업로드</h1>
+    <div className="max-w-4xl">
       <p className="text-sm text-zinc-500 mb-6">
         발주서(.xlsx)와 송장(.xlsx) 파일을 모두 올린 뒤 분석하기를 눌러주세요.
         분석 결과를 확인하고 등록 확정을 누르면 저장됩니다.
@@ -252,7 +250,7 @@ export default function UploadPage() {
           {/* 요약 */}
           <ul className="space-y-2 text-sm">
             <li className="flex items-center gap-2">
-              <span className="text-green-600">✅</span>
+              <CheckCircle2 size={16} strokeWidth={1.75} className="text-green-600 shrink-0" />
               <span>
                 매칭된 송장:{" "}
                 <span className="font-semibold">
@@ -272,7 +270,7 @@ export default function UploadPage() {
 
             {preview.summary.onlyInOrderCount > 0 && (
               <li className="flex items-center gap-2">
-                <span>⚠️</span>
+                <AlertTriangle size={16} strokeWidth={1.75} className="text-amber-500 shrink-0" />
                 <span>
                   발주서에만 있음:{" "}
                   <span className="font-semibold">
@@ -288,7 +286,7 @@ export default function UploadPage() {
 
             {preview.summary.onlyInInvoiceCount > 0 && (
               <li className="flex items-center gap-2">
-                <span>⚠️</span>
+                <AlertTriangle size={16} strokeWidth={1.75} className="text-amber-500 shrink-0" />
                 <span>
                   송장에만 있음:{" "}
                   <span className="font-semibold">
@@ -303,7 +301,7 @@ export default function UploadPage() {
             )}
 
             <li className="flex items-center gap-2">
-              <span>➕</span>
+              <Plus size={16} strokeWidth={2} className="text-zinc-500 shrink-0" />
               <span>
                 새로 등록될 품목:{" "}
                 <span className="font-semibold">
@@ -323,7 +321,7 @@ export default function UploadPage() {
 
             {preview.summary.totalNotes > 0 && (
               <li className="flex items-center gap-2">
-                <span>📝</span>
+                <StickyNote size={16} strokeWidth={1.75} className="text-zinc-500 shrink-0" />
                 <span>
                   메모 처리될 안내문:{" "}
                   <span className="font-semibold">
@@ -384,8 +382,12 @@ export default function UploadPage() {
                       </li>
                     ))}
                     {m.notes.map((n, i) => (
-                      <li key={`note-${i}`} className="text-zinc-400">
-                        📝 {n}
+                      <li
+                        key={`note-${i}`}
+                        className="text-zinc-400 flex items-center gap-1"
+                      >
+                        <StickyNote size={11} strokeWidth={1.75} className="shrink-0" />
+                        {n}
                       </li>
                     ))}
                   </ul>
@@ -467,7 +469,7 @@ export default function UploadPage() {
           </div>
         </section>
       )}
-    </main>
+    </div>
   );
 }
 
@@ -490,8 +492,9 @@ function FileBox(props: {
       />
       {props.file && (
         <div className="mt-3 flex items-center justify-between text-xs">
-          <span className="text-zinc-700 truncate">
-            ✓ {props.file.name}{" "}
+          <span className="text-zinc-700 truncate flex items-center gap-1">
+            <Check size={13} strokeWidth={2} className="text-green-600 shrink-0" />
+            {props.file.name}{" "}
             <span className="text-zinc-400">
               ({(props.file.size / 1024).toFixed(0)} KB)
             </span>
@@ -502,7 +505,7 @@ function FileBox(props: {
             className="text-zinc-400 hover:text-red-600 ml-2 disabled:opacity-50"
             aria-label="파일 제거"
           >
-            ✕
+            <X size={14} strokeWidth={2} />
           </button>
         </div>
       )}

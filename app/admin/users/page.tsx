@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { query } from "@/lib/db";
+import { KeyRound } from "lucide-react";
 import AddUserButton from "./AddUserButton";
 import UserActions from "./UserActions";
 
@@ -43,21 +43,11 @@ export default async function AdminUsersPage() {
   const users: UserRow[] = result.rows;
 
   return (
-    <main className="max-w-5xl mx-auto px-6 py-8">
-      <Link
-        href="/warehouse"
-        className="text-sm text-zinc-500 hover:text-zinc-900"
-      >
-        ← 바코드 관리
-      </Link>
-
-      <div className="mt-2 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-zinc-900">사용자 관리</h1>
-          <p className="text-sm text-zinc-500 mt-1">
-            계정 추가, 권한 변경, 활성/비활성을 관리합니다
-          </p>
-        </div>
+    <div className="max-w-5xl">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+        <p className="text-sm text-zinc-500">
+          계정 추가, 권한 변경, 활성/비활성을 관리합니다
+        </p>
         <AddUserButton />
       </div>
 
@@ -85,10 +75,10 @@ export default async function AdminUsersPage() {
                 {u.username}
                 {u.must_change_password && (
                   <span
-                    className="ml-1 text-amber-600"
+                    className="ml-1 inline-flex align-middle text-amber-600"
                     title="첫 로그인 시 비밀번호 변경 필요"
                   >
-                    🔑
+                    <KeyRound size={13} strokeWidth={1.75} />
                   </span>
                 )}
               </div>
@@ -135,6 +125,6 @@ export default async function AdminUsersPage() {
           );
         })}
       </div>
-    </main>
+    </div>
   );
 }

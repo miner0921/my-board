@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { query } from "@/lib/db";
+import { RefreshCw, ScanLine } from "lucide-react";
 import ReopenButton from "./ReopenButton";
 import DeleteInvoiceButton from "./DeleteInvoiceButton";
 
@@ -193,14 +194,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
       : 0;
 
   return (
-    <main className="max-w-4xl mx-auto px-6 py-8">
-      <Link
-        href="/warehouse/invoices"
-        className="inline-block text-sm text-zinc-500 hover:text-zinc-900 mb-4"
-      >
-        ← 송장 목록
-      </Link>
-
+    <div className="max-w-4xl">
       {/* 기본 정보 */}
       <article className="border border-zinc-200 rounded-lg p-6 bg-white">
         <div className="flex items-start justify-between mb-4 gap-3">
@@ -323,7 +317,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
         {invoice.status === "completed_partial" && invoice.completion_reason && (
           <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg">
             <p className="text-xs font-semibold text-amber-900 mb-2">
-              🟡 결품 완료 사유
+              결품 완료 사유
             </p>
             <dl className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-2 text-sm">
               <div>
@@ -348,20 +342,21 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
         {/* 재개 이력 (있을 때) */}
         {reopens.length > 0 && (
           <div className="mb-4 p-3 bg-zinc-50 border border-zinc-200 rounded-lg">
-            <p className="text-xs font-semibold text-zinc-700 mb-2">
-              🔄 재개 이력 ({reopens.length}건)
+            <p className="text-xs font-semibold text-zinc-700 mb-2 flex items-center gap-1.5">
+              <RefreshCw size={13} strokeWidth={2} />
+              재개 이력 ({reopens.length}건)
             </p>
             <ul className="space-y-2 text-xs">
               {reopens.map((r) => {
                 const prevLabel =
                   r.prev_status === "completed_partial"
-                    ? `🟡 부분 완료${
+                    ? `부분 완료${
                         r.prev_completion_reason
                           ? ` (${COMPLETION_REASON_LABEL[r.prev_completion_reason] ?? r.prev_completion_reason})`
                           : ""
                       }`
                     : r.prev_status === "completed"
-                      ? "✅ 완료"
+                      ? "완료"
                       : r.prev_status ?? "-";
                 const isAuto =
                   !!r.reason && r.reason.startsWith("수량 추가로 자동 재개");
@@ -382,7 +377,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
                       )}
                       {isAuto && (
                         <span className="ml-2 inline-block px-1.5 py-0.5 rounded text-[10px] border bg-blue-50 text-blue-700 border-blue-200">
-                          🤖 자동 재개
+                          자동 재개
                         </span>
                       )}
                     </p>
@@ -527,17 +522,17 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
                       </span>
                       {over && (
                         <span className="px-1.5 py-0.5 rounded text-[10px] border bg-red-50 text-red-700 border-red-200">
-                          🔴 초과 +{overCount}
+                          초과 +{overCount}
                         </span>
                       )}
                       {it.is_added_on_scan && (
                         <span className="px-1.5 py-0.5 rounded text-[10px] border bg-amber-50 text-amber-700 border-amber-200">
-                          🟡 현장 추가
+                          현장 추가
                         </span>
                       )}
                       {isShort && (
                         <span className="px-1.5 py-0.5 rounded text-[10px] border bg-red-50 text-red-700 border-red-200">
-                          🔴 결품 {lack}
+                          결품 {lack}
                         </span>
                       )}
                     </div>
@@ -567,9 +562,10 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
         <div className="mt-6">
           <Link
             href="/warehouse/scan"
-            className="block w-full py-3 rounded-lg text-sm font-medium bg-zinc-900 text-white hover:bg-zinc-800 transition text-center"
+            className="flex items-center justify-center gap-1.5 w-full py-3 rounded-lg text-sm font-medium bg-zinc-900 text-white hover:bg-zinc-800 transition"
           >
-            🔍 출고 검수로 이동
+            <ScanLine size={16} strokeWidth={1.75} />
+            출고 검수로 이동
           </Link>
           <p className="text-[11px] text-zinc-400 text-center mt-2">
             검수 페이지에서 이 송장 바코드({invoice.invoice_no})를 스캔하세요
@@ -609,6 +605,6 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
           </pre>
         </details>
       )}
-    </main>
+    </div>
   );
 }

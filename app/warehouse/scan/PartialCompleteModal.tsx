@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { AlertCircle, Check, AlertTriangle } from "lucide-react";
 
 type ItemForReview = {
   invoice_item_id: number;
@@ -123,7 +124,11 @@ export default function PartialCompleteModal({
     >
       <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 my-8">
         <div className="flex items-start gap-3 mb-4">
-          <div className="text-3xl">🟡</div>
+          <AlertCircle
+            size={28}
+            strokeWidth={1.75}
+            className="shrink-0 text-amber-500 mt-0.5"
+          />
           <div className="flex-1">
             <h2 className="text-lg font-semibold text-zinc-900">
               결품으로 완료
@@ -142,8 +147,9 @@ export default function PartialCompleteModal({
           </p>
           {filledItems.length > 0 && (
             <div className="mb-2">
-              <p className="text-[11px] text-green-700 font-medium mb-0.5">
-                ✓ 챙긴 품목 {filledItems.length}건
+              <p className="text-[11px] text-green-700 font-medium mb-0.5 flex items-center gap-1">
+                <Check size={12} strokeWidth={2.5} />
+                챙긴 품목 {filledItems.length}건
               </p>
               <ul className="text-xs text-zinc-700 space-y-0.5 pl-3">
                 {filledItems.map((it) => (
@@ -156,8 +162,9 @@ export default function PartialCompleteModal({
           )}
           {shortItems.length > 0 && (
             <div>
-              <p className="text-[11px] text-red-700 font-medium mb-0.5">
-                ⚠ 결품 품목 {shortItems.length}건
+              <p className="text-[11px] text-red-700 font-medium mb-0.5 flex items-center gap-1">
+                <AlertTriangle size={12} strokeWidth={2} />
+                결품 품목 {shortItems.length}건
               </p>
               <ul className="text-xs text-zinc-700 space-y-0.5 pl-3">
                 {shortItems.map((it) => {

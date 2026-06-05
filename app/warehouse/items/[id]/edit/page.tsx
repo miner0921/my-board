@@ -170,16 +170,12 @@ export default function EditItemPage() {
   };
 
   if (fetching || status === "loading") {
-    return (
-      <div className="max-w-3xl mx-auto px-6 py-8">
-        <p className="text-zinc-500">로딩 중...</p>
-      </div>
-    );
+    return <p className="text-zinc-500">로딩 중...</p>;
   }
 
   if (error && !name) {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-8">
+      <div className="max-w-3xl">
         <p className="text-red-600 mb-4">{error}</p>
         <Link
           href="/warehouse/items"
@@ -196,15 +192,7 @@ export default function EditItemPage() {
     !showingNewPreview && !removeExisting && hasExistingImage;
 
   return (
-    <main className="max-w-3xl mx-auto px-6 py-8">
-      <Link
-        href="/warehouse/items"
-        className="inline-block text-sm text-zinc-500 hover:text-zinc-900 mb-4"
-      >
-        ← 품목 목록
-      </Link>
-      <h1 className="text-2xl font-bold mb-6">품목 수정</h1>
-
+    <div className="max-w-3xl">
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* 바코드 (선택) */}
         <div>
@@ -324,6 +312,6 @@ export default function EditItemPage() {
           </button>
         </div>
       </form>
-    </main>
+    </div>
   );
 }

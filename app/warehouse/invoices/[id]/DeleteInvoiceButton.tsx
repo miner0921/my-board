@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Trash2, AlertTriangle } from "lucide-react";
 
 type Props = {
   invoiceId: number;
@@ -73,9 +74,10 @@ export default function DeleteInvoiceButton({ invoiceId, invoiceNo }: Props) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="block w-full py-3 rounded-lg text-sm font-medium border border-red-300 bg-red-50 text-red-800 hover:bg-red-100 transition text-center"
+        className="flex items-center justify-center gap-1.5 w-full py-3 rounded-lg text-sm font-medium border border-red-300 bg-red-50 text-red-800 hover:bg-red-100 transition"
       >
-        🗑️ 송장 삭제
+        <Trash2 size={16} strokeWidth={1.75} />
+        송장 삭제
       </button>
       <p className="text-[11px] text-zinc-400 text-center mt-2">
         관리자 전용 · 되돌릴 수 없는 작업입니다
@@ -89,7 +91,11 @@ export default function DeleteInvoiceButton({ invoiceId, invoiceNo }: Props) {
         >
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
             <div className="flex items-start gap-3 mb-4">
-              <div className="text-3xl">⚠️</div>
+              <AlertTriangle
+                size={28}
+                strokeWidth={1.75}
+                className="shrink-0 text-red-500 mt-0.5"
+              />
               <div className="flex-1">
                 <h2 className="text-lg font-semibold text-zinc-900">
                   송장 삭제

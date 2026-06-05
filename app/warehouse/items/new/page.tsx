@@ -103,25 +103,13 @@ export default function NewItemPage() {
   };
 
   if (status === "loading") {
-    return (
-      <div className="max-w-3xl mx-auto px-6 py-8">
-        <p className="text-zinc-500">로딩 중...</p>
-      </div>
-    );
+    return <p className="text-zinc-500">로딩 중...</p>;
   }
 
   if (!session) return null;
 
   return (
-    <main className="max-w-3xl mx-auto px-6 py-8">
-      <Link
-        href="/warehouse/items"
-        className="inline-block text-sm text-zinc-500 hover:text-zinc-900 mb-4"
-      >
-        ← 품목 목록
-      </Link>
-      <h1 className="text-2xl font-bold mb-6">새 품목 등록</h1>
-
+    <div className="max-w-3xl">
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* 바코드 (선택) — 자동 등록 품목과 일관성 위해 선택 입력 */}
         <div>
@@ -208,6 +196,6 @@ export default function NewItemPage() {
           </button>
         </div>
       </form>
-    </main>
+    </div>
   );
 }

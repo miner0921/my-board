@@ -2,6 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  Plus,
+  CheckCircle2,
+  KeyRound,
+  Copy,
+  Check,
+  AlertTriangle,
+} from "lucide-react";
 
 type CreatedUser = {
   id: number;
@@ -118,9 +126,10 @@ export default function AddUserButton() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="px-4 py-2 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition font-medium"
+        className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition font-medium"
       >
-        + 사용자 추가
+        <Plus size={16} strokeWidth={2} />
+        사용자 추가
       </button>
 
       {open && (
@@ -236,7 +245,11 @@ export default function AddUserButton() {
           {step === "result" && result && (
             <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
               <div className="flex items-start gap-3 mb-4">
-                <div className="text-3xl">✅</div>
+                <CheckCircle2
+                  size={28}
+                  strokeWidth={1.75}
+                  className="shrink-0 text-green-600 mt-0.5"
+                />
                 <div>
                   <h2 className="text-lg font-semibold text-zinc-900">
                     사용자 생성 완료
@@ -264,7 +277,10 @@ export default function AddUserButton() {
               </dl>
 
               <div className="mb-4">
-                <p className="text-xs text-zinc-500 mb-1">🔑 임시 비밀번호</p>
+                <p className="text-xs text-zinc-500 mb-1 flex items-center gap-1">
+                  <KeyRound size={13} strokeWidth={1.75} />
+                  임시 비밀번호
+                </p>
                 <div className="flex items-center gap-2 bg-amber-50 border border-amber-300 rounded-lg p-3">
                   <code className="flex-1 font-mono text-base text-zinc-900 break-all select-all">
                     {result.temp_password}
@@ -272,14 +288,31 @@ export default function AddUserButton() {
                   <button
                     type="button"
                     onClick={handleCopy}
-                    className="px-2.5 py-1.5 text-xs bg-white border border-amber-300 text-amber-800 rounded hover:bg-amber-100 transition whitespace-nowrap"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs bg-white border border-amber-300 text-amber-800 rounded hover:bg-amber-100 transition whitespace-nowrap"
                   >
-                    {copied ? "✓ 복사됨" : "📋 복사"}
+                    {copied ? (
+                      <>
+                        <Check size={13} strokeWidth={2} />
+                        복사됨
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={13} strokeWidth={1.75} />
+                        복사
+                      </>
+                    )}
                   </button>
                 </div>
-                <p className="text-[11px] text-amber-700 mt-1.5">
-                  ⚠️ 이 비밀번호는 다시 볼 수 없습니다. 사용자가 로그인 후
-                  반드시 비밀번호를 변경하게 됩니다.
+                <p className="text-[11px] text-amber-700 mt-1.5 flex items-start gap-1">
+                  <AlertTriangle
+                    size={13}
+                    strokeWidth={1.75}
+                    className="shrink-0 mt-0.5"
+                  />
+                  <span>
+                    이 비밀번호는 다시 볼 수 없습니다. 사용자가 로그인 후 반드시
+                    비밀번호를 변경하게 됩니다.
+                  </span>
                 </p>
               </div>
 

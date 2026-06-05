@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { RefreshCw } from "lucide-react";
 
 type Props = {
   invoiceId: number;
@@ -93,9 +94,10 @@ export default function ReopenButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="block w-full py-3 rounded-lg text-sm font-medium border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 transition text-center"
+        className="flex items-center justify-center gap-1.5 w-full py-3 rounded-lg text-sm font-medium border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 transition"
       >
-        🔄 검수 재개
+        <RefreshCw size={16} strokeWidth={1.75} />
+        검수 재개
       </button>
       <p className="text-[11px] text-zinc-400 text-center mt-2">
         배송 전 추가/수정 요청이 있을 때 사용하세요. 재개 이력은 영구
@@ -110,7 +112,11 @@ export default function ReopenButton({
         >
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 my-8">
             <div className="flex items-start gap-3 mb-4">
-              <div className="text-3xl">🔄</div>
+              <RefreshCw
+                size={28}
+                strokeWidth={1.75}
+                className="shrink-0 text-amber-600 mt-0.5"
+              />
               <div className="flex-1">
                 <h2 className="text-lg font-semibold text-zinc-900">
                   검수 재개
