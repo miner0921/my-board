@@ -6,6 +6,7 @@ import { RefreshCw, ScanLine } from "lucide-react";
 import ReopenButton from "./ReopenButton";
 import DeleteInvoiceButton from "./DeleteInvoiceButton";
 import ScanLogTimeline, { type ScanLog } from "./ScanLogTimeline";
+import InvoiceItemCard from "../../_components/InvoiceItemCard";
 
 type Invoice = {
   id: number;
@@ -467,106 +468,25 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
             연결된 품목이 없습니다.
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {items.map((it) => {
-              const showOriginal =
-                !!it.display_name && it.display_name !== it.name;
-              const itemScanComplete =
-                it.scanned_count >= it.quantity && it.quantity > 0;
-              const lack = Math.max(0, it.quantity - it.scanned_count);
-              const isShort =
-                invoice.status === "completed_partial" && lack > 0;
-              const over = it.scanned_count > it.quantity && it.quantity > 0;
-              const overCount = it.scanned_count - it.quantity;
-              return (
-                <div
-                  key={it.invoice_item_id}
-                  className={`border rounded-lg overflow-hidden bg-white flex flex-col ${
-                    over
-                      ? "border-red-300"
-                      : isShort
-                        ? "border-red-300"
-                        : it.is_added_on_scan
-                          ? "border-amber-300"
-                          : "border-zinc-200"
-                  }`}
-                >
-                  {/* 썸네일 */}
-                  <div className="aspect-square bg-zinc-50 border-b border-zinc-100 flex items-center justify-center overflow-hidden">
-                    {it.has_image ? (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img
-                        src={`/api/warehouse/items/${it.item_id}/image?v=${new Date(it.updated_at).getTime()}`}
-                        alt={it.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-xs text-zinc-300">이미지 없음</span>
-                    )}
-                  </div>
-
-                  <div className="p-3 flex-1 flex flex-col">
-                    {/* 정규화된 마스터 품목명 */}
-                    <h3 className="font-medium text-sm text-zinc-900 line-clamp-2 mb-1">
-                      {it.name}
-                    </h3>
-
-                    {/* 원본명이 다르면 표시 */}
-                    {showOriginal && (
-                      <p className="text-[11px] text-zinc-400 line-clamp-2 mb-2">
-                        ★{it.display_name}
-                        <span className="mx-1">→</span>
-                        {it.name}
-                      </p>
-                    )}
-
-                    {/* 수량 + 스캔 진행 + 배지 */}
-                    <div className="text-xs text-zinc-700 mb-2 flex items-center gap-1.5 flex-wrap">
-                      <span className="font-medium">×{it.quantity}</span>
-                      <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] border ${
-                          over
-                            ? "bg-red-50 text-red-700 border-red-200"
-                            : itemScanComplete
-                              ? "bg-green-50 text-green-700 border-green-200"
-                              : "bg-zinc-50 text-zinc-600 border-zinc-200"
-                        }`}
-                      >
-                        스캔 {it.scanned_count}/{it.quantity}
-                      </span>
-                      {over && (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] border bg-red-50 text-red-700 border-red-200">
-                          초과 +{overCount}
-                        </span>
-                      )}
-                      {it.is_added_on_scan && (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] border bg-amber-50 text-amber-700 border-amber-200">
-                          현장 추가
-                        </span>
-                      )}
-                      {isShort && (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] border bg-red-50 text-red-700 border-red-200">
-                          결품 {lack}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* 바코드 */}
-                    <div className="mt-auto">
-                      {it.barcode ? (
-                        <p className="font-mono text-[11px] text-zinc-600 truncate">
-                          {it.barcode}
-                        </p>
-                      ) : (
-                        <span className="inline-block px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[10px]">
-                          바코드 미등록
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="space-y-2">
+            {items.map((it) => (
+              <InvoiceItemCard
+                key={it.invoice_item_id}
+                item={{
+                  itemId: it.item_id,
+                  name: it.name,
+                  displayName: it.display_name,
+                  barcode: it.barcode,
+                  quantity: it.quantity,
+                  scannedCount: it.scanned_count,
+                  hasImage: it.has_image,
+                  updatedAt: it.updated_at,
+                  isAddedOnScan: it.is_added_on_scan,
+                }}
+                variant="detail"
+                isPartial={invoice.status === "completed_partial"}
+              />
+            ))}
           </div>
         )}
       </section>

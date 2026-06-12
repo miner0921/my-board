@@ -6,6 +6,7 @@ import InvoiceChangeModal from "./InvoiceChangeModal";
 import PartialCompleteModal from "./PartialCompleteModal";
 import CancelInvoiceModal from "./CancelInvoiceModal";
 import OverQuantityModal from "./OverQuantityModal";
+import InvoiceItemCard from "../_components/InvoiceItemCard";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import {
   beepComplete,
@@ -835,87 +836,25 @@ export default function ScanPage() {
               연결된 품목이 없습니다.
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {items.map((it) => {
-                const showOriginal =
-                  !!it.display_name && it.display_name !== it.name;
-                const complete =
-                  it.scanned_count >= it.quantity && it.quantity > 0;
-                const over =
-                  it.scanned_count > it.quantity && it.quantity > 0;
-                const highlighted = lastScannedId === it.invoice_item_id;
-                const isAdded = it.is_added_on_scan === true;
-                return (
-                  <div
-                    key={it.invoice_item_id}
-                    className={`border rounded-lg overflow-hidden bg-white flex flex-col transition-all ${
-                      over
-                        ? "border-red-400 ring-2 ring-red-200"
-                        : isAdded
-                          ? "border-amber-400"
-                          : complete
-                            ? "border-green-300"
-                            : "border-zinc-200"
-                    } ${highlighted ? "shadow-md scale-[1.02]" : ""}`}
-                  >
-                    <div className="aspect-square bg-zinc-50 border-b border-zinc-100 flex items-center justify-center overflow-hidden">
-                      {it.has_image ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img
-                          src={`/api/warehouse/items/${it.item_id}/image?v=${new Date(it.updated_at).getTime()}`}
-                          alt={it.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-xs text-zinc-300">
-                          이미지 없음
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="p-2.5 flex-1 flex flex-col">
-                      <h3 className="font-medium text-sm text-zinc-900 line-clamp-2 mb-1">
-                        {it.name}
-                      </h3>
-                      {showOriginal && (
-                        <p className="text-[10px] text-zinc-400 line-clamp-1 mb-1.5">
-                          ★{it.display_name}
-                        </p>
-                      )}
-                      <div className="text-xs text-zinc-700 mb-2 flex items-center gap-1.5 flex-wrap">
-                        <span className="font-medium">×{it.quantity}</span>
-                        <span
-                          className={`px-1.5 py-0.5 rounded text-[10px] border ${
-                            over
-                              ? "bg-red-50 text-red-700 border-red-200"
-                              : complete
-                                ? "bg-green-50 text-green-700 border-green-200"
-                                : "bg-zinc-50 text-zinc-600 border-zinc-200"
-                          }`}
-                        >
-                          {it.scanned_count}/{it.quantity}
-                        </span>
-                        {isAdded && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] border bg-amber-50 text-amber-700 border-amber-200">
-                            현장 추가
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-auto">
-                        {it.barcode ? (
-                          <p className="font-mono text-[10px] text-zinc-500 truncate">
-                            {it.barcode}
-                          </p>
-                        ) : (
-                          <span className="inline-block px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[10px]">
-                            바코드 미등록
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+              {items.map((it) => (
+                <InvoiceItemCard
+                  key={it.invoice_item_id}
+                  item={{
+                    itemId: it.item_id,
+                    name: it.name,
+                    displayName: it.display_name,
+                    barcode: it.barcode,
+                    quantity: it.quantity,
+                    scannedCount: it.scanned_count,
+                    hasImage: it.has_image,
+                    updatedAt: it.updated_at,
+                    isAddedOnScan: it.is_added_on_scan === true,
+                  }}
+                  variant="scan"
+                  highlighted={lastScannedId === it.invoice_item_id}
+                />
+              ))}
             </div>
           )}
         </section>

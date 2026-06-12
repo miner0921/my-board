@@ -4,6 +4,8 @@ import { auth } from "@/auth";
 import { query } from "@/lib/db";
 import { Plus, Upload } from "lucide-react";
 import DeleteButton from "./DeleteButton";
+import ItemThumb from "../_components/ItemThumb";
+import BarcodeTag from "../_components/BarcodeTag";
 
 type Item = {
   id: number;
@@ -135,7 +137,7 @@ export default async function ItemListPage({ searchParams }: PageProps) {
           </div>
         )
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
           {items.map((item) => {
             const isOwner =
               session.user?.id === String(item.created_by ?? "");
@@ -148,63 +150,43 @@ export default async function ItemListPage({ searchParams }: PageProps) {
             return (
               <div
                 key={item.id}
-                className="border border-zinc-200 rounded-lg overflow-hidden bg-white flex flex-col"
+                className="flex items-center gap-3 p-2 border border-zinc-200 rounded-lg bg-white"
               >
-                {/* 썸네일 */}
-                <div className="aspect-square bg-zinc-50 border-b border-zinc-100 flex items-center justify-center overflow-hidden">
-                  {item.has_image ? (
-                    /* BYTEA는 별도 라우트에서 서빙. updated_at 으로 캐시 무효화. */
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={`/api/warehouse/items/${item.id}/image?v=${new Date(item.updated_at).getTime()}`}
-                      alt={item.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-xs text-zinc-300">이미지 없음</span>
-                  )}
-                </div>
+                <ItemThumb
+                  itemId={item.id}
+                  hasImage={item.has_image}
+                  updatedAt={item.updated_at}
+                  name={item.name}
+                  size="sm"
+                />
 
-                {/* 본문 */}
-                <div className="p-3 flex-1 flex flex-col">
-                  <h2 className="font-medium text-sm text-zinc-900 line-clamp-2 mb-1">
+                <div className="flex-1 min-w-0">
+                  <h2 className="font-medium text-sm text-zinc-900 truncate">
                     {item.name}
                   </h2>
-
-                  {/* 바코드: 있으면 모노스페이스, 없으면 호박색 배지 */}
-                  <div className="mb-2">
-                    {item.barcode ? (
-                      <p className="font-mono text-xs text-zinc-600 truncate">
-                        {item.barcode}
-                      </p>
-                    ) : (
-                      <span className="inline-block px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[10px]">
-                        바코드 미등록
-                      </span>
-                    )}
+                  <div className="mt-0.5">
+                    <BarcodeTag barcode={item.barcode} />
                   </div>
-
-                  <div className="text-[11px] text-zinc-400 mt-auto">
+                  <p className="text-[11px] text-zinc-400 mt-0.5 truncate">
                     {item.author_nickname ?? "(삭제된 사용자)"} ·{" "}
                     {formatDate(item.created_at)}
-                  </div>
-
-                  {/* 수정: 자동 등록이면 누구나, 아니면 본인만
-                      삭제: 본인만 */}
-                  {(canEdit || canDelete) && (
-                    <div className="flex gap-1.5 mt-3">
-                      {canEdit && (
-                        <Link
-                          href={`/warehouse/items/${item.id}/edit`}
-                          className="flex-1 text-center px-2 py-1.5 text-xs border border-zinc-300 rounded hover:bg-zinc-50 transition"
-                        >
-                          수정
-                        </Link>
-                      )}
-                      {canDelete && <DeleteButton itemId={item.id} />}
-                    </div>
-                  )}
+                  </p>
                 </div>
+
+                {/* 수정: 자동 등록이면 누구나, 아니면 본인만 / 삭제: 관리자만 */}
+                {(canEdit || canDelete) && (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {canEdit && (
+                      <Link
+                        href={`/warehouse/items/${item.id}/edit`}
+                        className="px-2 py-1.5 text-xs border border-zinc-300 rounded hover:bg-zinc-50 transition"
+                      >
+                        수정
+                      </Link>
+                    )}
+                    {canDelete && <DeleteButton itemId={item.id} />}
+                  </div>
+                )}
               </div>
             );
           })}
