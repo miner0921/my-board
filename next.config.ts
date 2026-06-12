@@ -21,6 +21,8 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Cloud Run 배포용: standalone 빌드로 최소 실행 이미지 생성
+  output: "standalone",
   async headers() {
     return [
       {

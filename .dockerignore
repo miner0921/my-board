@@ -1,0 +1,24 @@
+# 의존성/빌드 산출물 (컨테이너 안에서 새로 생성)
+node_modules
+.next
+out
+
+# 시크릿 — 절대 이미지에 포함 금지 (환경변수는 Cloud Run에서 주입)
+.env
+.env.local
+.env.*.local
+
+# 로컬/개발 전용
+.git
+.gitignore
+.vscode
+.idea
+npm-debug.log*
+README.md
+
+# OS 잡파일
+.DS_Store
+Thumbs.db
+
+# 마이그레이션 SQL (런타임 불필요)
+migrations

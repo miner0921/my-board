@@ -1,0 +1,18 @@
+# Cloud Build로 소스 업로드 시 제외할 항목
+# (node_modules/.next는 컨테이너에서 새로 생성, .env*는 시크릿이라 제외)
+node_modules
+.next
+out
+
+.env
+.env.local
+.env.*.local
+
+.git
+.gitignore
+.vscode
+.idea
+npm-debug.log*
+
+.DS_Store
+Thumbs.db
