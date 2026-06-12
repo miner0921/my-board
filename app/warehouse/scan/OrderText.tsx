@@ -16,7 +16,7 @@ export default function OrderText({ items }: { items: OrderTextItem[] }) {
 
   return (
     <div className="mb-4 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-      <p className="text-[11px] text-zinc-500 mb-1.5">발주서 원문</p>
+      <p className="text-[11px] text-zinc-500 mb-1.5">전체 상품</p>
       <p className="text-sm leading-relaxed">
         {items.map((it, i) => {
           const complete = it.scanned_count >= it.quantity && it.quantity > 0;

@@ -662,12 +662,6 @@ export default function ScanPage() {
         >
           {/* 바코드 입력 */}
           <div className="p-3 sm:p-4">
-            <label
-              htmlFor="scan-input"
-              className="block text-xs text-zinc-500 mb-2"
-            >
-              바코드 스캔
-            </label>
             <input
               ref={inputRef}
               id="scan-input"
@@ -717,12 +711,18 @@ export default function ScanPage() {
             <div className="px-3 sm:px-4 pb-2.5 border-t border-zinc-100 pt-2.5 space-y-1">
               {/* 줄1: 송장번호 · 주문번호 · 우측 상태/진행 배지 */}
               <div className="flex items-center gap-2 text-xs min-w-0">
-                <span className="font-mono font-semibold text-zinc-900 truncate">
-                  {invoice.invoice_no}
+                <span className="truncate">
+                  <span className="text-zinc-500">송장번호 </span>
+                  <span className="font-mono font-semibold text-zinc-900">
+                    {invoice.invoice_no}
+                  </span>
                 </span>
                 {invoice.order_no && (
-                  <span className="font-mono text-zinc-400 truncate shrink-0">
-                    · {invoice.order_no}
+                  <span className="truncate shrink-0">
+                    <span className="text-zinc-500">주문번호 </span>
+                    <span className="font-mono text-zinc-600">
+                      {invoice.order_no}
+                    </span>
                   </span>
                 )}
                 <span className="ml-auto shrink-0">
@@ -745,7 +745,7 @@ export default function ScanPage() {
               {(invoice.recipient_name ||
                 invoice.recipient_phone ||
                 invoice.recipient_address) && (
-                <div className="flex items-center gap-2 text-[11px] text-zinc-500 min-w-0">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-zinc-500">
                   {invoice.recipient_name && (
                     <span className="text-zinc-700 shrink-0">
                       {invoice.recipient_name}
@@ -757,7 +757,7 @@ export default function ScanPage() {
                     </span>
                   )}
                   {invoice.recipient_address && (
-                    <span className="truncate">{invoice.recipient_address}</span>
+                    <span>{invoice.recipient_address}</span>
                   )}
                 </div>
               )}
