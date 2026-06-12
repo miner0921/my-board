@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { query } from "@/lib/db";
-import { Upload, History } from "lucide-react";
+import { Upload } from "lucide-react";
 import InvoiceGroup from "./InvoiceGroup";
 
 type InvoiceRow = {
@@ -282,22 +282,6 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
           완료
         </Link>
       </div>
-
-      {/* 완료 탭 안내 — 조회·감사는 검수 이력, 여기는 관리용 */}
-      {tab === "done" && (
-        <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-lg">
-          <p className="text-xs text-zinc-500">
-            이 목록은 완료 송장의 <span className="text-zinc-700">재개·삭제 등 관리</span>용입니다.
-          </p>
-          <Link
-            href="/warehouse/history"
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-700 hover:text-zinc-900 transition self-start sm:self-auto"
-          >
-            <History size={14} strokeWidth={1.75} />
-            조회·감사는 검수 이력에서 보기 →
-          </Link>
-        </div>
-      )}
 
       {/* 검색 + 필터 */}
       <form

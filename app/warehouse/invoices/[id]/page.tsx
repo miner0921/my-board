@@ -5,6 +5,7 @@ import { query } from "@/lib/db";
 import { RefreshCw, ScanLine } from "lucide-react";
 import ReopenButton from "./ReopenButton";
 import DeleteInvoiceButton from "./DeleteInvoiceButton";
+import ScanLogTimeline, { type ScanLog } from "./ScanLogTimeline";
 
 type Invoice = {
   id: number;
@@ -133,7 +134,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
 
   const { id } = await params;
 
-  const [invResult, itemsResult, reopensResult] = await Promise.all([
+  const [invResult, itemsResult, reopensResult, logsResult] = await Promise.all([
     query(
       `SELECT
          i.id, i.invoice_no, i.order_no, i.status,
@@ -181,12 +182,25 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
         ORDER BY r.reopened_at DESC`,
       [id]
     ),
+    // 스캔 기록 — 누가/언제/무슨 품목(바코드)을 찍었는지, 오류 포함. 시간순.
+    query(
+      `SELECT s.id, s.scanned_at, s.is_error, s.error_reason, s.item_id,
+              it.name AS item_name, it.barcode AS item_barcode,
+              u.nickname AS user_name
+         FROM scan_logs s
+         LEFT JOIN items it ON s.item_id = it.id
+         LEFT JOIN users u  ON s.user_id = u.id
+        WHERE s.invoice_id = $1
+        ORDER BY s.scanned_at ASC, s.id ASC`,
+      [id]
+    ),
   ]);
 
   if (invResult.rows.length === 0) notFound();
   const invoice: Invoice = invResult.rows[0];
   const items: InvoiceItem[] = itemsResult.rows;
   const reopens: ReopenEntry[] = reopensResult.rows;
+  const logs: ScanLog[] = logsResult.rows;
 
   const progressPct =
     invoice.total_qty > 0
@@ -556,6 +570,9 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
           </div>
         )}
       </section>
+
+      {/* 스캔 기록 타임라인 — 스캔 내역이 있으면 항상 표시(진행중 포함) */}
+      <ScanLogTimeline logs={logs} />
 
       {/* 검수 시작 진입 (pending) 또는 검수 재개 (completed/partial) */}
       {invoice.status === "pending" && (
