@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { query } from "@/lib/db";
-import { Upload } from "lucide-react";
+import { Upload, History } from "lucide-react";
 import InvoiceGroup from "./InvoiceGroup";
 
 type InvoiceRow = {
@@ -81,7 +81,11 @@ function customerTypeBadge(type: string | null) {
 }
 
 const ALLOWED_TYPES = new Set(["business", "individual", "retail", "none"]);
-type SortMode = "created" | "completed";
+
+// 상태 탭: 대기(처리할 일) / 완료(관리용). 정렬축이 아니라 역할축.
+//   - pending: 미완료 송장(부분 스캔 진행중 포함). 작업 대기열.
+//   - done: 완료/부분완료. 재개·삭제 등 관리 진입로 유지(조회·감사는 검수 이력).
+type Tab = "pending" | "done";
 
 // ── 날짜 그룹화 유틸 ────────────────────────────────────────
 // 현재 날짜 기준으로:
@@ -145,9 +149,8 @@ function labelFor(key: GroupKey, sample: string | null): string {
 type PageProps = {
   searchParams: Promise<{
     q?: string;
-    status?: string;
     type?: string;
-    sort?: string;
+    tab?: string;
   }>;
 };
 
@@ -155,26 +158,12 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
   const session = await auth();
   if (!session) redirect("/login");
 
-  const {
-    q: qParam,
-    status: statusParam,
-    type: typeParam,
-    sort: sortParam,
-  } = await searchParams;
+  const { q: qParam, type: typeParam, tab: tabParam } = await searchParams;
   const q = (qParam ?? "").trim();
-  const sort: SortMode = sortParam === "completed" ? "completed" : "created";
-  const status =
-    statusParam === "pending" ||
-    statusParam === "completed" ||
-    statusParam === "completed_partial"
-      ? statusParam
-      : "all";
+  const tab: Tab = tabParam === "done" ? "done" : "pending";
   const customerType =
     typeParam && ALLOWED_TYPES.has(typeParam) ? typeParam : "all";
-  const isFiltered =
-    q !== "" ||
-    (sort !== "completed" && status !== "all") ||
-    customerType !== "all";
+  const isFiltered = q !== "" || customerType !== "all";
 
   // 동적 WHERE 구성
   const conditions: string[] = [];
@@ -185,14 +174,12 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
       `(i.invoice_no ILIKE $${params.length} OR i.order_no ILIKE $${params.length})`
     );
   }
-  if (sort === "completed") {
-    // 완료일 탭에서는 상태 필터 무시하고 완료/부분완료 모두
+  if (tab === "done") {
     conditions.push(
       `i.status IN ('completed', 'completed_partial') AND i.completed_at IS NOT NULL`
     );
-  } else if (status !== "all") {
-    params.push(status);
-    conditions.push(`i.status = $${params.length}`);
+  } else {
+    conditions.push(`i.status = 'pending'`);
   }
   if (customerType !== "all") {
     if (customerType === "none") {
@@ -204,7 +191,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
   }
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
-  const orderCol = sort === "completed" ? "i.completed_at" : "i.created_at";
+  const orderCol = tab === "done" ? "i.completed_at" : "i.created_at";
 
   const result = await query(
     `SELECT
@@ -231,8 +218,8 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
     { sample: string | null; rows: InvoiceRow[] }
   >();
   for (const inv of invoices) {
-    const basis = sort === "completed" ? inv.completed_at : inv.created_at;
-    if (!basis) continue; // completed_at 없는 경우는 위 WHERE에서 걸러짐
+    const basis = tab === "done" ? inv.completed_at : inv.created_at;
+    if (!basis) continue;
     const key = groupKeyFor(basis, now);
     if (!groups.has(key)) {
       groups.set(key, { sample: basis, rows: [] });
@@ -242,16 +229,19 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
   }
 
   // 쿼리스트링 헬퍼 (탭 전환 시 필터 유지)
-  const buildHref = (overrides: Partial<{ sort: SortMode }>) => {
+  const buildHref = (overrides: Partial<{ tab: Tab }>) => {
     const sp = new URLSearchParams();
-    const nextSort = overrides.sort ?? sort;
-    if (nextSort !== "created") sp.set("sort", nextSort);
+    const nextTab = overrides.tab ?? tab;
+    if (nextTab !== "pending") sp.set("tab", nextTab);
     if (q) sp.set("q", q);
-    if (nextSort !== "completed" && status !== "all") sp.set("status", status);
     if (customerType !== "all") sp.set("type", customerType);
     const qs = sp.toString();
     return qs ? `/warehouse/invoices?${qs}` : "/warehouse/invoices";
   };
+
+  // 초기화 링크 — 현재 탭은 유지하되 검색/필터만 비움
+  const resetHref =
+    tab === "done" ? "/warehouse/invoices?tab=done" : "/warehouse/invoices";
 
   return (
     <div className="max-w-6xl">
@@ -269,29 +259,45 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
         </Link>
       </div>
 
-      {/* 정렬 탭 */}
+      {/* 상태 탭 */}
       <div className="mb-4 flex gap-2 border-b border-zinc-200">
         <Link
-          href={buildHref({ sort: "created" })}
+          href={buildHref({ tab: "pending" })}
           className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition ${
-            sort === "created"
+            tab === "pending"
               ? "border-zinc-900 text-zinc-900"
               : "border-transparent text-zinc-500 hover:text-zinc-900"
           }`}
         >
-          등록일 기준
+          대기
         </Link>
         <Link
-          href={buildHref({ sort: "completed" })}
+          href={buildHref({ tab: "done" })}
           className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition ${
-            sort === "completed"
+            tab === "done"
               ? "border-zinc-900 text-zinc-900"
               : "border-transparent text-zinc-500 hover:text-zinc-900"
           }`}
         >
-          완료일 기준
+          완료
         </Link>
       </div>
+
+      {/* 완료 탭 안내 — 조회·감사는 검수 이력, 여기는 관리용 */}
+      {tab === "done" && (
+        <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-lg">
+          <p className="text-xs text-zinc-500">
+            이 목록은 완료 송장의 <span className="text-zinc-700">재개·삭제 등 관리</span>용입니다.
+          </p>
+          <Link
+            href="/warehouse/history"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-700 hover:text-zinc-900 transition self-start sm:self-auto"
+          >
+            <History size={14} strokeWidth={1.75} />
+            조회·감사는 검수 이력에서 보기 →
+          </Link>
+        </div>
+      )}
 
       {/* 검색 + 필터 */}
       <form
@@ -299,8 +305,8 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
         method="get"
         className="mb-6 flex flex-wrap gap-2"
       >
-        {/* sort 유지 (탭 클릭 외에는 현재 탭 보존) */}
-        {sort !== "created" && <input type="hidden" name="sort" value={sort} />}
+        {/* tab 유지 (필터 검색 시 현재 탭 보존) */}
+        {tab !== "pending" && <input type="hidden" name="tab" value={tab} />}
         <input
           type="text"
           name="q"
@@ -308,22 +314,6 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
           placeholder="송장번호 또는 주문번호로 검색"
           className="flex-1 min-w-[200px] px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
         />
-        <select
-          name="status"
-          defaultValue={status}
-          disabled={sort === "completed"}
-          className="px-3 py-2 border border-zinc-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900 disabled:opacity-50"
-          title={
-            sort === "completed"
-              ? "완료일 탭에서는 완료된 송장만 표시됩니다"
-              : ""
-          }
-        >
-          <option value="all">상태: 전체</option>
-          <option value="pending">대기</option>
-          <option value="completed">완료</option>
-          <option value="completed_partial">부분 완료</option>
-        </select>
         <select
           name="type"
           defaultValue={customerType}
@@ -343,7 +333,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
         </button>
         {isFiltered && (
           <Link
-            href={sort === "completed" ? "/warehouse/invoices?sort=completed" : "/warehouse/invoices"}
+            href={resetHref}
             className="px-4 py-2 border border-zinc-300 rounded-lg text-sm hover:bg-zinc-50 transition"
           >
             초기화
@@ -360,17 +350,17 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
               조건을 바꾸거나 초기화 버튼을 눌러보세요.
             </p>
           </div>
-        ) : sort === "completed" ? (
+        ) : tab === "done" ? (
           <div className="text-center py-16 border border-dashed border-zinc-300 rounded-lg">
             <p className="text-zinc-500 mb-1">완료된 송장이 없습니다.</p>
           </div>
         ) : (
           <div className="text-center py-20 border border-dashed border-zinc-300 rounded-lg">
             <p className="text-zinc-600 mb-1 text-base">
-              아직 등록된 송장이 없습니다.
+              처리할 송장이 없습니다.
             </p>
             <p className="text-xs text-zinc-400 mb-6">
-              발주서와 송장 파일을 업로드해 시작하세요.
+              새 송장을 업로드하거나, 완료된 송장은 검수 이력에서 확인하세요.
             </p>
             <Link
               href="/warehouse/upload"
@@ -401,7 +391,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
                 partialCount={partialCount}
                 defaultOpen={defaultOpen}
               >
-                <InvoiceTable rows={g.rows} sort={sort} />
+                <InvoiceTable rows={g.rows} tab={tab} />
               </InvoiceGroup>
             );
           })}
@@ -411,13 +401,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
   );
 }
 
-function InvoiceTable({
-  rows,
-  sort,
-}: {
-  rows: InvoiceRow[];
-  sort: SortMode;
-}) {
+function InvoiceTable({ rows, tab }: { rows: InvoiceRow[]; tab: Tab }) {
   return (
     <div>
       {/* 헤더 */}
@@ -429,14 +413,14 @@ function InvoiceTable({
         <div className="col-span-1 text-center">진행</div>
         <div className="col-span-1 text-center">상태</div>
         <div className="col-span-2 text-center">
-          {sort === "completed" ? "완료" : "등록"}
+          {tab === "done" ? "완료" : "등록"}
         </div>
       </div>
 
       {/* 행 */}
       {rows.map((inv) => {
         const dateText =
-          sort === "completed"
+          tab === "done"
             ? inv.completed_at
               ? formatDateShort(inv.completed_at)
               : "-"
