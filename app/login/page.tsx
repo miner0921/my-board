@@ -10,7 +10,8 @@ import { signIn } from "next-auth/react";
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") || "/";
+  // 콜백이 없으면 옛 게시판(/) 대신 새 셸의 출고 대시보드로 보낸다.
+  const callbackUrl = searchParams.get("callbackUrl") || "/warehouse";
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
