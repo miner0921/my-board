@@ -1,0 +1,53 @@
+// 발주서 원문 텍스트 — 송장 품목들을 한 덩어리 문자열로 보여준다.
+//   (예: "(증정)망고 / 홍백향차 ×2 / 흑임자")
+// 스캔 완료된 품목은 초록 + 취소선, 미완료는 그대로. 작업자가 쭉 읽으며 작업.
+// 품목 카드 그리드와 "같은 invoice_items 한 소스"로 렌더한다(중복 없음).
+
+type OrderTextItem = {
+  invoice_item_id: number;
+  display_name: string | null;
+  name: string;
+  quantity: number;
+  scanned_count: number;
+};
+
+export default function OrderText({ items }: { items: OrderTextItem[] }) {
+  if (items.length === 0) return null;
+
+  return (
+    <div className="mb-4 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+      <p className="text-[11px] text-zinc-500 mb-1.5">발주서 원문</p>
+      <p className="text-sm leading-relaxed">
+        {items.map((it, i) => {
+          const complete = it.scanned_count >= it.quantity && it.quantity > 0;
+          const label = it.display_name?.trim() || it.name;
+          const partial = !complete && it.scanned_count > 0;
+          return (
+            <span key={it.invoice_item_id}>
+              {i > 0 && <span className="text-zinc-300 mx-1">/</span>}
+              <span
+                className={
+                  complete ? "text-green-600 line-through" : "text-zinc-800"
+                }
+              >
+                {label}
+                {it.quantity > 1 && (
+                  <span className={complete ? "" : "text-zinc-500"}>
+                    {" "}
+                    ×{it.quantity}
+                  </span>
+                )}
+                {partial && (
+                  <span className="text-zinc-400 no-underline">
+                    {" "}
+                    ({it.scanned_count}/{it.quantity})
+                  </span>
+                )}
+              </span>
+            </span>
+          );
+        })}
+      </p>
+    </div>
+  );
+}

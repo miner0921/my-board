@@ -6,7 +6,8 @@ import InvoiceChangeModal from "./InvoiceChangeModal";
 import PartialCompleteModal from "./PartialCompleteModal";
 import CancelInvoiceModal from "./CancelInvoiceModal";
 import OverQuantityModal from "./OverQuantityModal";
-import InvoiceItemCard from "../_components/InvoiceItemCard";
+import OrderText from "./OrderText";
+import ScanItemCard from "./ScanItemCard";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import {
   beepComplete,
@@ -29,6 +30,9 @@ type InvoicePayload = {
   order_no: string | null;
   status: string;
   customer_type: string | null;
+  recipient_name: string | null;
+  recipient_phone: string | null;
+  recipient_address: string | null;
   total_qty: number;
   scanned_qty: number;
 };
@@ -76,13 +80,6 @@ type CompleteBanner =
   | { kind: "full"; invoice_no: string }
   | { kind: "partial"; invoice_no: string; reason: string; note: string }
   | null;
-
-function customerTypeBadge(type: string | null) {
-  if (type === "business") return <Badge tone="blue">사업자</Badge>;
-  if (type === "individual") return <Badge tone="green">개인</Badge>;
-  if (type === "retail") return <Badge tone="purple">소매</Badge>;
-  return null;
-}
 
 function Badge({
   tone,
@@ -658,18 +655,133 @@ export default function ScanPage() {
 
   return (
     <div className="max-w-5xl">
-      {/* 상단: 현재 송장 표시 */}
-      <div className="flex items-center justify-end gap-3 mb-4">
-        {invoice ? (
-          <div className="text-right min-w-0">
-            <p className="text-[10px] text-zinc-500">현재 송장</p>
-            <p className="font-mono text-xs sm:text-sm font-semibold text-zinc-900 truncate">
-              {invoice.invoice_no}
-            </p>
+      {/* 1) Sticky 상단 박스 — 입력 + 송장/수취인 정보 + 진행률 띠를 한 박스로 */}
+      <div className="sticky top-0 z-20 bg-white pt-1 pb-3">
+        <div
+          className={`bg-white border-2 rounded-xl overflow-hidden shadow-sm transition-all ${inputBorderClass}`}
+        >
+          {/* 바코드 입력 */}
+          <div className="p-3 sm:p-4">
+            <label
+              htmlFor="scan-input"
+              className="block text-xs text-zinc-500 mb-2"
+            >
+              바코드 스캔
+            </label>
+            <input
+              ref={inputRef}
+              id="scan-input"
+              type="text"
+              inputMode="text"
+              autoComplete="off"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              value={input ?? ""}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onFocus={() => initAudio()}
+              disabled={loading || modalOpen}
+              placeholder={
+                isSessionDone
+                  ? "다음 송장 바코드를 스캔하세요"
+                  : invoice
+                    ? "품목 바코드 또는 다른 송장 바코드"
+                    : "송장 바코드를 스캔하세요"
+              }
+              className="w-full text-lg sm:text-xl font-mono px-4 py-4 border border-zinc-200 rounded-lg focus:outline-none disabled:opacity-50"
+            />
+            {statusMsg && (
+              <p
+                className={`mt-2 text-sm font-medium flex items-center gap-1.5 ${
+                  statusKind === "ok"
+                    ? "text-green-700"
+                    : statusKind === "error"
+                      ? "text-red-700"
+                      : "text-zinc-600"
+                }`}
+              >
+                {statusKind === "ok" && (
+                  <CheckCircle2 size={16} strokeWidth={2} className="shrink-0" />
+                )}
+                {statusKind === "error" && (
+                  <AlertCircle size={16} strokeWidth={2} className="shrink-0" />
+                )}
+                {statusMsg}
+              </p>
+            )}
           </div>
-        ) : (
-          <span className="text-xs text-zinc-400">송장 대기</span>
-        )}
+
+          {/* 송장/수취인 정보 (송장 진입 후) */}
+          {invoice && (
+            <div className="px-3 sm:px-4 pb-2.5 border-t border-zinc-100 pt-2.5 space-y-1">
+              {/* 줄1: 송장번호 · 주문번호 · 우측 상태/진행 배지 */}
+              <div className="flex items-center gap-2 text-xs min-w-0">
+                <span className="font-mono font-semibold text-zinc-900 truncate">
+                  {invoice.invoice_no}
+                </span>
+                {invoice.order_no && (
+                  <span className="font-mono text-zinc-400 truncate shrink-0">
+                    · {invoice.order_no}
+                  </span>
+                )}
+                <span className="ml-auto shrink-0">
+                  {invoice.status === "completed" ? (
+                    <Badge tone="green">
+                      완료 · {invoice.scanned_qty}/{invoice.total_qty}
+                    </Badge>
+                  ) : invoice.status === "completed_partial" ? (
+                    <Badge tone="amber">
+                      부분 완료 · {invoice.scanned_qty}/{invoice.total_qty}
+                    </Badge>
+                  ) : (
+                    <Badge tone="amber">
+                      검수 중 · {invoice.scanned_qty}/{invoice.total_qty}
+                    </Badge>
+                  )}
+                </span>
+              </div>
+              {/* 줄2: 수취인 이름 · 전화 · 주소(가로 나란히, 주소 말줄임) */}
+              {(invoice.recipient_name ||
+                invoice.recipient_phone ||
+                invoice.recipient_address) && (
+                <div className="flex items-center gap-2 text-[11px] text-zinc-500 min-w-0">
+                  {invoice.recipient_name && (
+                    <span className="text-zinc-700 shrink-0">
+                      {invoice.recipient_name}
+                    </span>
+                  )}
+                  {invoice.recipient_phone && (
+                    <span className="font-mono shrink-0">
+                      {invoice.recipient_phone}
+                    </span>
+                  )}
+                  {invoice.recipient_address && (
+                    <span className="truncate">{invoice.recipient_address}</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 진행률 — 박스 맨 아래 가장자리 4px 띠 */}
+          {invoice && (
+            <div className="h-1 bg-zinc-100">
+              <div
+                className={`h-full transition-all ${
+                  invoice.status === "completed_partial"
+                    ? "bg-amber-500"
+                    : progressPct === 100
+                      ? "bg-green-500"
+                      : progressPct > 0
+                        ? "bg-zinc-700"
+                        : "bg-zinc-300"
+                }`}
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 완료/부분완료 배너 (자동으로 안 사라짐) */}
@@ -716,149 +828,35 @@ export default function ScanPage() {
         </div>
       )}
 
-      {/* 단일 입력란 */}
-      <div className={`bg-white border-2 rounded-xl p-4 sm:p-5 mb-4 transition-all ${inputBorderClass}`}>
-        <label
-          htmlFor="scan-input"
-          className="block text-xs text-zinc-500 mb-2"
-        >
-          바코드 스캔
-        </label>
-        <input
-          ref={inputRef}
-          id="scan-input"
-          type="text"
-          inputMode="text"
-          autoComplete="off"
-          autoCapitalize="off"
-          autoCorrect="off"
-          spellCheck={false}
-          value={input ?? ""}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onFocus={() => initAudio()}
-          disabled={loading || modalOpen}
-          placeholder={
-            isSessionDone
-              ? "다음 송장 바코드를 스캔하세요"
-              : invoice
-                ? "품목 바코드 또는 다른 송장 바코드"
-                : "송장 바코드를 스캔하세요"
-          }
-          className="w-full text-lg sm:text-xl font-mono px-4 py-4 border border-zinc-200 rounded-lg focus:outline-none disabled:opacity-50"
-        />
-        {statusMsg && (
-          <p
-            className={`mt-3 text-sm font-medium flex items-center gap-1.5 ${
-              statusKind === "ok"
-                ? "text-green-700"
-                : statusKind === "error"
-                  ? "text-red-700"
-                  : "text-zinc-600"
-            }`}
-          >
-            {statusKind === "ok" && (
-              <CheckCircle2 size={16} strokeWidth={2} className="shrink-0" />
-            )}
-            {statusKind === "error" && (
-              <AlertCircle size={16} strokeWidth={2} className="shrink-0" />
-            )}
-            {statusMsg}
-          </p>
-        )}
-      </div>
+      {/* 2) 발주서 원문 텍스트 — 스캔 완료분 초록 취소선. 카드와 같은 items 소스 */}
+      {invoice && <OrderText items={items} />}
 
-      {/* 송장 정보 + 진행률 */}
-      {invoice && (
-        <article className="border border-zinc-200 rounded-xl p-4 bg-white mb-4">
-          <div className="flex items-center gap-2 mb-3">
-            {customerTypeBadge(invoice.customer_type)}
-            {invoice.status === "completed" ? (
-              <Badge tone="green">완료</Badge>
-            ) : invoice.status === "completed_partial" ? (
-              <Badge tone="amber">부분 완료</Badge>
-            ) : (
-              <Badge tone="amber">검수 중</Badge>
-            )}
+      {/* 3) 제품 카드 그리드 — 이미지 위 + 정보 아래, 한 줄 5개 */}
+      {invoice &&
+        (items.length === 0 ? (
+          <div className="text-center py-8 border border-dashed border-zinc-300 rounded-lg text-zinc-500 text-sm">
+            연결된 품목이 없습니다.
           </div>
-
-          <dl className="text-sm mb-4">
-            <div>
-              <dt className="text-[11px] text-zinc-500">주문번호</dt>
-              <dd className="font-mono text-xs text-zinc-800">
-                {invoice.order_no ?? <span className="text-zinc-300">-</span>}
-              </dd>
-            </div>
-          </dl>
-
-          {/* 진행률 */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[11px] text-zinc-500">진행률</span>
-              <span className="text-xs text-zinc-700">
-                <span className="font-semibold text-zinc-900">
-                  {invoice.scanned_qty}
-                </span>
-                <span className="text-zinc-400"> / </span>
-                <span>{invoice.total_qty}</span>
-                <span className="text-zinc-400 ml-1">({progressPct}%)</span>
-              </span>
-            </div>
-            <div className="h-2 bg-zinc-100 rounded-full overflow-hidden">
-              <div
-                className={`h-full transition-all ${
-                  invoice.status === "completed_partial"
-                    ? "bg-amber-500"
-                    : progressPct === 100
-                      ? "bg-green-500"
-                      : progressPct > 0
-                        ? "bg-zinc-700"
-                        : "bg-zinc-300"
-                }`}
-                style={{ width: `${progressPct}%` }}
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+            {items.map((it) => (
+              <ScanItemCard
+                key={it.invoice_item_id}
+                item={{
+                  itemId: it.item_id,
+                  name: it.name,
+                  quantity: it.quantity,
+                  scannedCount: it.scanned_count,
+                  barcode: it.barcode,
+                  hasImage: it.has_image,
+                  updatedAt: it.updated_at,
+                  isAddedOnScan: it.is_added_on_scan === true,
+                }}
+                highlighted={lastScannedId === it.invoice_item_id}
               />
-            </div>
+            ))}
           </div>
-        </article>
-      )}
-
-      {/* 품목 카드 */}
-      {invoice && (
-        <section className="mb-4">
-          <h2 className="text-sm font-semibold text-zinc-900 mb-2">
-            품목{" "}
-            <span className="text-zinc-400 font-normal">
-              ({items.length}건)
-            </span>
-          </h2>
-          {items.length === 0 ? (
-            <div className="text-center py-8 border border-dashed border-zinc-300 rounded-lg text-zinc-500 text-sm">
-              연결된 품목이 없습니다.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-              {items.map((it) => (
-                <InvoiceItemCard
-                  key={it.invoice_item_id}
-                  item={{
-                    itemId: it.item_id,
-                    name: it.name,
-                    displayName: it.display_name,
-                    barcode: it.barcode,
-                    quantity: it.quantity,
-                    scannedCount: it.scanned_count,
-                    hasImage: it.has_image,
-                    updatedAt: it.updated_at,
-                    isAddedOnScan: it.is_added_on_scan === true,
-                  }}
-                  variant="scan"
-                  highlighted={lastScannedId === it.invoice_item_id}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      )}
+        ))}
 
       {/* 보조 영역 - 진행률 > 0이고 pending일 때만 */}
       {showAuxButtons && (

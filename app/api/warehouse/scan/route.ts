@@ -662,6 +662,7 @@ async function loadInvoiceFull(invoiceId: number): Promise<{
       `SELECT
          i.id, i.invoice_no, i.order_no, i.status,
          i.customer_type, i.created_at,
+         i.recipient_name, i.recipient_phone, i.recipient_address,
          COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
          COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
        FROM invoices i
@@ -692,6 +693,9 @@ async function loadInvoiceFull(invoiceId: number): Promise<{
       order_no: raw.order_no,
       status: raw.status,
       customer_type: raw.customer_type,
+      recipient_name: raw.recipient_name,
+      recipient_phone: raw.recipient_phone,
+      recipient_address: raw.recipient_address,
       total_qty: raw.total_qty,
       scanned_qty: raw.scanned_qty,
     },
