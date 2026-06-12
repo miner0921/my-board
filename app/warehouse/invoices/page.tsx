@@ -151,6 +151,8 @@ type PageProps = {
     q?: string;
     type?: string;
     tab?: string;
+    from?: string;
+    to?: string;
   }>;
 };
 
@@ -158,12 +160,27 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
   const session = await auth();
   if (!session) redirect("/login");
 
-  const { q: qParam, type: typeParam, tab: tabParam } = await searchParams;
+  const {
+    q: qParam,
+    type: typeParam,
+    tab: tabParam,
+    from: fromParam,
+    to: toParam,
+  } = await searchParams;
   const q = (qParam ?? "").trim();
   const tab: Tab = tabParam === "done" ? "done" : "pending";
   const customerType =
     typeParam && ALLOWED_TYPES.has(typeParam) ? typeParam : "all";
-  const isFiltered = q !== "" || customerType !== "all";
+  // YYYY-MM-DD 형식만 통과 (잘못된 값은 무시)
+  const isDate = (v: string | undefined): v is string =>
+    !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  const from = isDate(fromParam) ? fromParam : "";
+  const to = isDate(toParam) ? toParam : "";
+  const isFiltered =
+    q !== "" || customerType !== "all" || from !== "" || to !== "";
+
+  // 날짜 필터는 현재 탭이 보여주는 날짜 컬럼 기준 (대기=등록일, 완료=완료일)
+  const orderCol = tab === "done" ? "i.completed_at" : "i.created_at";
 
   // 동적 WHERE 구성
   const conditions: string[] = [];
@@ -171,7 +188,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
   if (q !== "") {
     params.push(`%${q}%`);
     conditions.push(
-      `(i.invoice_no ILIKE $${params.length} OR i.order_no ILIKE $${params.length})`
+      `(i.invoice_no ILIKE $${params.length} OR i.order_no ILIKE $${params.length} OR i.recipient_name ILIKE $${params.length} OR i.recipient_phone ILIKE $${params.length})`
     );
   }
   if (tab === "done") {
@@ -189,9 +206,16 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
       conditions.push(`i.customer_type = $${params.length}`);
     }
   }
+  if (from !== "") {
+    params.push(from);
+    conditions.push(`${orderCol} >= $${params.length}::date`);
+  }
+  if (to !== "") {
+    params.push(to);
+    // to 당일 포함 (다음날 0시 미만)
+    conditions.push(`${orderCol} < ($${params.length}::date + interval '1 day')`);
+  }
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-
-  const orderCol = tab === "done" ? "i.completed_at" : "i.created_at";
 
   const result = await query(
     `SELECT
@@ -235,6 +259,8 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
     if (nextTab !== "pending") sp.set("tab", nextTab);
     if (q) sp.set("q", q);
     if (customerType !== "all") sp.set("type", customerType);
+    if (from) sp.set("from", from);
+    if (to) sp.set("to", to);
     const qs = sp.toString();
     return qs ? `/warehouse/invoices?${qs}` : "/warehouse/invoices";
   };
@@ -255,7 +281,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
           className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition font-medium self-start sm:self-auto"
         >
           <Upload size={16} strokeWidth={1.75} />
-          송장 업로드
+          발주서 및 송장 업로드
         </Link>
       </div>
 
@@ -295,7 +321,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
           type="text"
           name="q"
           defaultValue={q}
-          placeholder="송장번호 또는 주문번호로 검색"
+          placeholder="송장번호·주문번호·수령인·연락처로 검색"
           className="flex-1 min-w-[200px] px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
         />
         <select
@@ -309,6 +335,21 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
           <option value="retail">소매</option>
           <option value="none">미분류</option>
         </select>
+        <input
+          type="date"
+          name="from"
+          defaultValue={from}
+          aria-label="시작일"
+          className="px-3 py-2 border border-zinc-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
+        />
+        <span className="self-center text-zinc-400 text-sm">~</span>
+        <input
+          type="date"
+          name="to"
+          defaultValue={to}
+          aria-label="종료일"
+          className="px-3 py-2 border border-zinc-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
+        />
         <button
           type="submit"
           className="px-4 py-2 border border-zinc-300 rounded-lg text-sm hover:bg-zinc-50 transition"
@@ -351,7 +392,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
               className="inline-flex items-center gap-1.5 px-6 py-3 bg-zinc-900 text-white rounded-lg text-sm font-medium hover:bg-zinc-800 transition"
             >
               <Upload size={16} strokeWidth={1.75} />
-              송장 업로드
+              발주서 및 송장 업로드
             </Link>
           </div>
         )

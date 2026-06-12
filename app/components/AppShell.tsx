@@ -21,9 +21,9 @@ type ShellUser = {
 // 경로별 브레드크럼/제목. 정확 일치 우선, 없으면 prefix 매칭.
 const TITLE_MAP: Record<string, { crumb: string; title: string }> = {
   "/warehouse": { crumb: "바코드 시스템", title: "대시보드" },
-  "/warehouse/scan": { crumb: "검수", title: "출고 검수" },
-  "/warehouse/invoices": { crumb: "송장", title: "송장 목록" },
-  "/warehouse/items": { crumb: "품목", title: "품목 목록" },
+  "/warehouse/scan": { crumb: "", title: "출고 스캔" },
+  "/warehouse/invoices": { crumb: "", title: "송장 관리" },
+  "/warehouse/items": { crumb: "", title: "품목 관리" },
   "/warehouse/items/new": { crumb: "품목", title: "품목 등록" },
   "/warehouse/items/bulk": { crumb: "품목", title: "CSV 대량 등록" },
   "/warehouse/upload": { crumb: "송장", title: "송장 업로드" },
@@ -91,7 +91,7 @@ export default function AppShell({
 
       {/* 사이드바 — 데스크탑 정적 / 모바일 슬라이드 오버레이 */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-[220px] bg-zinc-800 transform transition-transform duration-200 md:static md:translate-x-0 md:shrink-0 ${
+        className={`fixed inset-y-0 left-0 z-40 w-[220px] bg-zinc-800 transform transition-transform duration-200 md:sticky md:top-0 md:h-screen md:self-start md:translate-x-0 md:shrink-0 ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >

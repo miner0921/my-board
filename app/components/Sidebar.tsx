@@ -32,9 +32,9 @@ type NavItem = {
 };
 
 const MAIN_NAV: NavItem[] = [
-  { href: "/warehouse/invoices", label: "송장", icon: FileText },
-  { href: "/warehouse/scan", label: "검수", icon: ScanLine },
-  { href: "/warehouse/items", label: "품목", icon: Package },
+  { href: "/warehouse/invoices", label: "송장 관리", icon: FileText },
+  { href: "/warehouse/scan", label: "출고 스캔", icon: ScanLine },
+  { href: "/warehouse/items", label: "품목 관리", icon: Package },
 ];
 
 const ADMIN_NAV: NavItem[] = [

@@ -29,35 +29,44 @@ function formatDate(date: string) {
 }
 
 type PageProps = {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; nobarcode?: string; noimage?: string }>;
 };
 
 export default async function ItemListPage({ searchParams }: PageProps) {
   const session = await auth();
   if (!session) redirect("/login");
 
-  const { q: qParam } = await searchParams;
+  const { q: qParam, nobarcode: nbParam, noimage: niParam } = await searchParams;
   const q = (qParam ?? "").trim();
-  const isSearching = q !== "";
+  const noBarcode = nbParam === "1";
+  const noImage = niParam === "1";
+  const isFiltered = q !== "" || noBarcode || noImage;
 
-  const baseSelect = `
-    SELECT
-      i.id, i.barcode, i.name, i.created_by, i.created_at, i.updated_at,
-      i.is_auto_created,
-      (i.image_data IS NOT NULL) AS has_image,
-      u.nickname AS author_nickname
-    FROM items i
-    LEFT JOIN users u ON i.created_by = u.id
-  `;
+  // 동적 WHERE 구성 (검색어 + 바코드없음 + 이미지없음)
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (q !== "") {
+    params.push(`%${q}%`);
+    conditions.push(
+      `(i.name ILIKE $${params.length} OR i.barcode ILIKE $${params.length})`
+    );
+  }
+  if (noBarcode) conditions.push(`i.barcode IS NULL`);
+  if (noImage) conditions.push(`i.image_data IS NULL`);
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
-  const result = isSearching
-    ? await query(
-        `${baseSelect}
-         WHERE i.name ILIKE $1 OR i.barcode ILIKE $1
-         ORDER BY i.created_at DESC`,
-        [`%${q}%`]
-      )
-    : await query(`${baseSelect} ORDER BY i.created_at DESC`);
+  const result = await query(
+    `SELECT
+       i.id, i.barcode, i.name, i.created_by, i.created_at, i.updated_at,
+       i.is_auto_created,
+       (i.image_data IS NOT NULL) AS has_image,
+       u.nickname AS author_nickname
+     FROM items i
+     LEFT JOIN users u ON i.created_by = u.id
+     ${where}
+     ORDER BY i.created_at DESC`,
+    params
+  );
 
   const items: Item[] = result.rows;
 
@@ -86,26 +95,46 @@ export default async function ItemListPage({ searchParams }: PageProps) {
         </div>
       </div>
 
-      {/* 검색창 */}
+      {/* 검색 + 필터 */}
       <form
         action="/warehouse/items"
         method="get"
-        className="mb-6 flex gap-2"
+        className="mb-6 flex flex-wrap items-center gap-2"
       >
         <input
           type="text"
           name="q"
           defaultValue={q}
           placeholder="품목명 또는 바코드로 검색"
-          className="flex-1 px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
+          className="flex-1 min-w-[200px] px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
         />
+        <label className="inline-flex items-center gap-1.5 px-3 py-2 border border-zinc-300 rounded-lg text-sm cursor-pointer hover:bg-zinc-50 select-none">
+          <input
+            type="checkbox"
+            name="nobarcode"
+            value="1"
+            defaultChecked={noBarcode}
+            className="accent-zinc-900"
+          />
+          바코드 없음
+        </label>
+        <label className="inline-flex items-center gap-1.5 px-3 py-2 border border-zinc-300 rounded-lg text-sm cursor-pointer hover:bg-zinc-50 select-none">
+          <input
+            type="checkbox"
+            name="noimage"
+            value="1"
+            defaultChecked={noImage}
+            className="accent-zinc-900"
+          />
+          이미지 없음
+        </label>
         <button
           type="submit"
           className="px-4 py-2 border border-zinc-300 rounded-lg text-sm hover:bg-zinc-50 transition"
         >
           검색
         </button>
-        {isSearching && (
+        {isFiltered && (
           <Link
             href="/warehouse/items"
             className="px-4 py-2 border border-zinc-300 rounded-lg text-sm hover:bg-zinc-50 transition"
@@ -117,11 +146,11 @@ export default async function ItemListPage({ searchParams }: PageProps) {
 
       {/* 빈 상태 */}
       {items.length === 0 ? (
-        isSearching ? (
+        isFiltered ? (
           <div className="text-center py-16 border border-dashed border-zinc-300 rounded-lg">
             <p className="text-zinc-500 mb-1">검색 결과가 없습니다.</p>
             <p className="text-xs text-zinc-400">
-              <span className="font-mono">&ldquo;{q}&rdquo;</span>에 해당하는 품목이 없습니다.
+              조건에 맞는 품목이 없습니다. 검색어나 필터를 바꿔보세요.
             </p>
           </div>
         ) : (

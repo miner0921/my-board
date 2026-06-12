@@ -8,6 +8,7 @@ import CancelInvoiceModal from "./CancelInvoiceModal";
 import OverQuantityModal from "./OverQuantityModal";
 import OrderText from "./OrderText";
 import ScanItemCard from "./ScanItemCard";
+import { sortScanItems } from "./sortScanItems";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import {
   beepComplete,
@@ -653,6 +654,13 @@ export default function ScanPage() {
     invoice.status === "pending" &&
     invoice.scanned_qty > 0;
 
+  // [시험용] 카드 표시 순서: 방금 찍은 것 → 안 찍은 것 → 찍은 것.
+  // 등록순 고정으로 되돌리려면 SORT_BY_SCAN = false 한 줄만 바꾸면 됨.
+  const SORT_BY_SCAN = true;
+  const displayItems = SORT_BY_SCAN
+    ? sortScanItems(items, lastScannedId)
+    : items;
+
   return (
     <div className="max-w-5xl">
       {/* 1) Sticky 상단 박스 — 입력 + 송장/수취인 정보 + 진행률 띠를 한 박스로 */}
@@ -848,7 +856,7 @@ export default function ScanPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-            {items.map((it) => (
+            {displayItems.map((it) => (
               <ScanItemCard
                 key={it.invoice_item_id}
                 item={{
