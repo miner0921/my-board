@@ -32,8 +32,8 @@ type NavItem = {
 };
 
 const MAIN_NAV: NavItem[] = [
-  { href: "/warehouse/scan", label: "검수", icon: ScanLine },
   { href: "/warehouse/invoices", label: "송장", icon: FileText },
+  { href: "/warehouse/scan", label: "검수", icon: ScanLine },
   { href: "/warehouse/items", label: "품목", icon: Package },
 ];
 

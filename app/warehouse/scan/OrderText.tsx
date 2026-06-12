@@ -31,12 +31,7 @@ export default function OrderText({ items }: { items: OrderTextItem[] }) {
                 }
               >
                 {label}
-                {it.quantity > 1 && (
-                  <span className={complete ? "" : "text-zinc-500"}>
-                    {" "}
-                    ×{it.quantity}
-                  </span>
-                )}
+                {it.quantity}
                 {partial && (
                   <span className="text-zinc-400 no-underline">
                     {" "}

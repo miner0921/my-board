@@ -687,7 +687,7 @@ export default function ScanPage() {
             />
             {statusMsg && (
               <p
-                className={`mt-2 text-sm font-medium flex items-center gap-1.5 ${
+                className={`mt-2 text-lg sm:text-xl font-semibold flex items-center gap-1.5 ${
                   statusKind === "ok"
                     ? "text-green-700"
                     : statusKind === "error"
@@ -696,10 +696,10 @@ export default function ScanPage() {
                 }`}
               >
                 {statusKind === "ok" && (
-                  <CheckCircle2 size={16} strokeWidth={2} className="shrink-0" />
+                  <CheckCircle2 size={22} strokeWidth={2} className="shrink-0" />
                 )}
                 {statusKind === "error" && (
-                  <AlertCircle size={16} strokeWidth={2} className="shrink-0" />
+                  <AlertCircle size={22} strokeWidth={2} className="shrink-0" />
                 )}
                 {statusMsg}
               </p>
@@ -708,19 +708,19 @@ export default function ScanPage() {
 
           {/* 송장/수취인 정보 (송장 진입 후) */}
           {invoice && (
-            <div className="px-3 sm:px-4 pb-2.5 border-t border-zinc-100 pt-2.5 space-y-1">
+            <div className="px-3 sm:px-4 pb-2 border-t border-zinc-100 pt-2 space-y-1.5">
               {/* 줄1: 송장번호 · 주문번호 · 우측 상태/진행 배지 */}
-              <div className="flex items-center gap-2 text-xs min-w-0">
+              <div className="flex items-center gap-4 min-w-0">
                 <span className="truncate">
-                  <span className="text-zinc-500">송장번호 </span>
-                  <span className="font-mono font-semibold text-zinc-900">
+                  <span className="text-xs text-zinc-400 mr-1.5">송장번호</span>
+                  <span className="text-sm text-zinc-800">
                     {invoice.invoice_no}
                   </span>
                 </span>
                 {invoice.order_no && (
                   <span className="truncate shrink-0">
-                    <span className="text-zinc-500">주문번호 </span>
-                    <span className="font-mono text-zinc-600">
+                    <span className="text-xs text-zinc-400 mr-1.5">주문번호</span>
+                    <span className="text-sm text-zinc-800">
                       {invoice.order_no}
                     </span>
                   </span>
@@ -745,19 +745,30 @@ export default function ScanPage() {
               {(invoice.recipient_name ||
                 invoice.recipient_phone ||
                 invoice.recipient_address) && (
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-zinc-500">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                   {invoice.recipient_name && (
-                    <span className="text-zinc-700 shrink-0">
-                      {invoice.recipient_name}
+                    <span className="shrink-0">
+                      <span className="text-xs text-zinc-400 mr-1.5">수취인</span>
+                      <span className="text-sm text-zinc-800">
+                        {invoice.recipient_name}
+                      </span>
                     </span>
                   )}
                   {invoice.recipient_phone && (
-                    <span className="font-mono shrink-0">
-                      {invoice.recipient_phone}
+                    <span className="shrink-0">
+                      <span className="text-xs text-zinc-400 mr-1.5">연락처</span>
+                      <span className="text-sm text-zinc-800">
+                        {invoice.recipient_phone}
+                      </span>
                     </span>
                   )}
                   {invoice.recipient_address && (
-                    <span>{invoice.recipient_address}</span>
+                    <span>
+                      <span className="text-xs text-zinc-400 mr-1.5">주소</span>
+                      <span className="text-sm text-zinc-800">
+                        {invoice.recipient_address}
+                      </span>
+                    </span>
                   )}
                 </div>
               )}
@@ -771,11 +782,9 @@ export default function ScanPage() {
                 className={`h-full transition-all ${
                   invoice.status === "completed_partial"
                     ? "bg-amber-500"
-                    : progressPct === 100
+                    : progressPct > 0
                       ? "bg-green-500"
-                      : progressPct > 0
-                        ? "bg-zinc-700"
-                        : "bg-zinc-300"
+                      : "bg-zinc-300"
                 }`}
                 style={{ width: `${progressPct}%` }}
               />
