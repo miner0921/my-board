@@ -9,6 +9,7 @@ export default function QuantityModal({
   item,
   onConfirm,
   onClose,
+  title = "수동 챙김",
 }: {
   item: {
     invoice_item_id: number;
@@ -19,6 +20,7 @@ export default function QuantityModal({
   };
   onConfirm: (count: number) => void;
   onClose: () => void;
+  title?: string;
 }) {
   const [value, setValue] = useState<string>(String(item.quantity));
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -36,7 +38,7 @@ export default function QuantityModal({
   };
 
   return (
-    <Modal open onClose={onClose} title="수동 챙김" size="md">
+    <Modal open onClose={onClose} title={title} size="md">
       <div className="space-y-4">
         <div>
           <p className="text-sm font-medium text-zinc-900">{item.name}</p>

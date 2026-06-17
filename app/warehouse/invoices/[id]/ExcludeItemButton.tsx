@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { MinusCircle } from "lucide-react";
 import ExcludeItemModal from "../../scan/ExcludeItemModal";
 
-// 송장 상세에서 품목을 "제외(빼기)" 한다.
+// 송장 상세에서 품목을 "취소(빼기)" 한다.
 // 검수 화면과 동일한 흐름: ExcludeItemModal(사유 선택) → scan/exclude API 재사용.
-// 다 찍힌 품목도 여기서 뺄 수 있다(검수 화면은 미완료만 보이므로).
+// (내부 API/식별자는 exclude 그대로 — 화면 문구만 "취소")
 export default function ExcludeItemButton({
   invoiceId,
   invoiceItemId,
@@ -43,7 +43,7 @@ export default function ExcludeItemButton({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data?.error ?? "제외에 실패했습니다.");
+        setError(data?.error ?? "취소에 실패했습니다.");
         return;
       }
       router.refresh();
@@ -63,7 +63,7 @@ export default function ExcludeItemButton({
         className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border border-zinc-300 text-zinc-600 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition disabled:opacity-50"
       >
         <MinusCircle size={13} strokeWidth={1.75} />
-        {loading ? "제외 중…" : "제외"}
+        {loading ? "취소 중…" : "취소"}
       </button>
       {error && <p className="mt-1 text-[10px] text-red-600">{error}</p>}
       {open && (

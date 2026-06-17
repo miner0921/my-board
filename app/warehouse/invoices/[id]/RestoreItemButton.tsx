@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { RotateCcw } from "lucide-react";
 
-// 송장 상세에서 "제외됨" 품목을 다시 송장에 되살린다(복구).
+// 송장 상세에서 "취소됨" 품목을 다시 송장에 되살린다(복구).
 // 완료 송장이 복구로 미완료가 되면 서버가 자동 재개(invoice_reopens) 처리.
 export default function RestoreItemButton({
   invoiceId,

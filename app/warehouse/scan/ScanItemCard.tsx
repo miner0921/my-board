@@ -23,18 +23,22 @@ export default function ScanItemCard({
   highlighted = false,
   onPick,
   onExclude,
+  onMenu,
 }: {
   item: ScanItemCardData;
   highlighted?: boolean;
-  onPick?: () => void; // 바코드 없는 품목 수동 챙김
-  onExclude?: () => void; // 송장에서 품목 빼기(제외)
+  onPick?: () => void; // 미완료·바코드 없는 품목 → 카드 탭으로 수동 챙김
+  onExclude?: () => void; // 미완료 카드의 X버튼 → 취소(송장에서 빼기)
+  onMenu?: () => void; // 완료 카드 → 카드 탭으로 메뉴(수량 수정/취소)
 }) {
   const { quantity, scannedCount } = item;
   const complete = scannedCount >= quantity && quantity > 0;
   const over = scannedCount > quantity && quantity > 0;
   const notStarted = scannedCount === 0;
   const manual = !item.barcode; // 바코드 없음 → 수동 챙김 대상
-  const clickable = manual && !!onPick;
+  // 카드 전체 클릭: 미완료 수동챙김(onPick) 또는 완료 메뉴(onMenu)
+  const cardClick = onPick ?? onMenu;
+  const clickable = !!cardClick;
 
   const borderClass = over
     ? "border-red-400 ring-2 ring-red-200"
@@ -48,7 +52,7 @@ export default function ScanItemCard({
 
   return (
     <div
-      onClick={clickable ? onPick : undefined}
+      onClick={clickable ? cardClick : undefined}
       role={clickable ? "button" : undefined}
       tabIndex={clickable ? 0 : undefined}
       onKeyDown={
@@ -56,7 +60,7 @@ export default function ScanItemCard({
           ? (e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                onPick?.();
+                cardClick?.();
               }
             }
           : undefined
@@ -67,12 +71,12 @@ export default function ScanItemCard({
         clickable ? "cursor-pointer hover:shadow-md" : ""
       }`}
     >
-      {/* 빼기(제외) — 좌상단. 카드 탭(수동챙김)과 충돌 안 나게 stopPropagation */}
+      {/* 취소 — 좌상단. 카드 탭(수동챙김)과 충돌 안 나게 stopPropagation */}
       {onExclude && (
         <button
           type="button"
-          aria-label="송장에서 빼기"
-          title="송장에서 빼기"
+          aria-label="취소 (송장에서 빼기)"
+          title="취소 (송장에서 빼기)"
           onClick={(e) => {
             e.stopPropagation();
             onExclude();
@@ -140,11 +144,18 @@ export default function ScanItemCard({
             </span>
           )}
         </div>
-        {/* 바코드 없음 → 수동 챙김 안내 */}
-        {manual && (
+        {/* 미완료·바코드 없음 → 수동 챙김 안내 */}
+        {onPick && manual && (
           <span className="mt-1 inline-flex items-center gap-1 w-fit px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[11px]">
             <Hand size={11} strokeWidth={1.75} />
             탭하여 수량 입력
+          </span>
+        )}
+        {/* 완료 카드 → 탭하면 메뉴(수량 수정/취소) */}
+        {onMenu && (
+          <span className="mt-1 inline-flex items-center gap-1 w-fit px-1.5 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded text-[11px]">
+            <Hand size={11} strokeWidth={1.75} />
+            탭하여 수정·취소
           </span>
         )}
       </div>

@@ -11,8 +11,8 @@ type Props = {
   onConfirm: (reason: string) => void;
 };
 
-// 검수 중 송장에서 품목을 "제외(빼기)" 할 때 확인 + 사유(선택) 입력 모달.
-//   - 사유는 선택. 비워도 제외 가능.
+// 검수 중 송장에서 품목을 "취소(빼기)" 할 때 확인 + 사유(선택) 입력 모달.
+//   - 사유는 선택. 비워도 취소 가능. (내부 API/식별자는 exclude 그대로)
 //   - 이미 챙긴 수량이 있으면 그 기록은 보존되지만 진행률에서 빠진다고 안내.
 // 닫히면 부모가 입력란 focus 복원.
 export default function ExcludeItemModal({
@@ -61,14 +61,14 @@ export default function ExcludeItemModal({
               이 품목을 송장에서 뺄까요?
             </h2>
             <p className="text-sm text-zinc-600 mt-1">
-              제외하면 진행률·완료 판정에서 빠집니다. 기록은 송장 상세에
+              취소하면 진행률·완료 판정에서 빠집니다. 기록은 송장 상세에
               보존되고 나중에 복구할 수 있어요.
             </p>
           </div>
         </div>
 
         <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-3 mb-4">
-          <p className="text-[11px] text-zinc-500 mb-0.5">제외할 품목</p>
+          <p className="text-[11px] text-zinc-500 mb-0.5">취소할 품목</p>
           <p className="text-sm font-medium text-zinc-900 break-all">
             {itemName}{" "}
             <span className="text-zinc-400 font-normal">×{quantity}</span>
@@ -82,7 +82,7 @@ export default function ExcludeItemModal({
         </div>
 
         <label className="block mb-4">
-          <span className="text-xs text-zinc-500">제외 사유 (선택)</span>
+          <span className="text-xs text-zinc-500">취소 사유 (선택)</span>
           <input
             type="text"
             value={reason}
@@ -100,14 +100,14 @@ export default function ExcludeItemModal({
             onClick={onCancel}
             className="flex-1 py-3 rounded-lg text-sm font-medium border border-zinc-300 text-zinc-700 hover:bg-zinc-50 transition"
           >
-            취소 (ESC)
+            닫기 (ESC)
           </button>
           <button
             type="button"
             onClick={() => onConfirm(reason.trim())}
             className="flex-1 py-3 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition"
           >
-            제외
+            취소
           </button>
         </div>
       </div>

@@ -101,7 +101,7 @@ export default function InvoiceItemCard({
           <span className="font-medium text-xs text-zinc-700">×{quantity}</span>
           {excluded ? (
             <span className="px-1.5 py-0.5 rounded text-[10px] border bg-zinc-100 text-zinc-500 border-zinc-300">
-              제외됨
+              취소됨
               {item.excludedByName ? ` · ${item.excludedByName}` : ""}
             </span>
           ) : (

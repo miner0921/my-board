@@ -10,6 +10,7 @@ import OrderText from "./OrderText";
 import ScanItemCard from "./ScanItemCard";
 import QuantityModal from "./QuantityModal";
 import ExcludeItemModal from "./ExcludeItemModal";
+import ScanItemMenuModal from "./ScanItemMenuModal";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import {
   beepComplete,
@@ -141,6 +142,8 @@ export default function ScanPage() {
   const [manualTarget, setManualTarget] = useState<ItemPayload | null>(null);
   // 제외(빼기) 대상 품목
   const [excludeTarget, setExcludeTarget] = useState<ItemPayload | null>(null);
+  // 완료 카드 클릭 시 뜨는 메뉴(수량 수정 / 취소) 대상 품목
+  const [menuTarget, setMenuTarget] = useState<ItemPayload | null>(null);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -152,7 +155,8 @@ export default function ScanPage() {
     partialOpen ||
     cancelOpen ||
     manualTarget !== null ||
-    excludeTarget !== null;
+    excludeTarget !== null ||
+    menuTarget !== null;
 
   // 송장이 완료/부분완료 상태면 "세션 끝" — 품목 스캔은 서버에서 자연스럽게
   // scan_no_invoice로 처리되도록 current_invoice_id=null로 보냄.
@@ -664,13 +668,16 @@ export default function ScanPage() {
     invoice.status === "pending" &&
     invoice.scanned_qty > 0;
 
-  // 검수 화면: 아직 안 끝난 품목만 카드로 표시(끝나면 사라짐).
-  // 순서는 송장 원문 순서(ii.id) 그대로 — 정렬하지 않는다.
-  const displayItems = items.filter(
-    (it) => !(it.scanned_count >= it.quantity && it.quantity > 0)
-  );
+  // 검수 화면 품목을 두 구역으로 나눈다. 순서는 송장 원문 순서(ii.id) 그대로.
+  //   - remainingItems: 아직 안 끝난 품목 ("남은 상품")
+  //   - completedItems: 다 찍은/챙긴 품목 ("완료된 상품" — 초록, 사라지지 않음)
+  // items 는 이미 취소(excluded) 품목이 빠진 목록이라 별도 필터 불필요.
+  const isItemComplete = (it: ItemPayload) =>
+    it.scanned_count >= it.quantity && it.quantity > 0;
+  const remainingItems = items.filter((it) => !isItemComplete(it));
+  const completedItems = items.filter(isItemComplete);
 
-  // 품목 제외(빼기) 확정 — 검수 화면에서 송장에서 빼기
+  // 품목 취소(송장에서 빼기) 확정 — 내부 API/식별자는 exclude 그대로 사용
   const handleExclude = async (reason: string) => {
     const target = excludeTarget;
     if (!invoice || !target) return;
@@ -690,20 +697,20 @@ export default function ScanPage() {
       const data = await res.json();
       if (!res.ok) {
         setStatusKind("error");
-        setStatusMsg(data?.error ?? "품목 제외에 실패했습니다.");
+        setStatusMsg(data?.error ?? "품목 취소에 실패했습니다.");
         triggerFlash("error");
         beepError();
         vibrate([100, 50, 100]);
         return;
       }
-      // 제외된 행은 화면(카드/원문)에서 제거
+      // 취소된 행은 화면(카드/원문)에서 제거
       setItems((prev) =>
         prev.filter((it) => it.invoice_item_id !== target.invoice_item_id)
       );
       if (lastScannedId === target.invoice_item_id) setLastScannedId(null);
 
       if (data.type === "invoice_complete") {
-        // 제외 결과 남은 품목이 전부 채워져 자동 완료된 경우
+        // 취소 결과 남은 품목이 전부 채워져 자동 완료된 경우
         setInvoice((prev) =>
           prev
             ? {
@@ -715,7 +722,7 @@ export default function ScanPage() {
             : prev
         );
         setStatusKind("ok");
-        setStatusMsg(`${target.name} 제외 → 송장 완료!`);
+        setStatusMsg(`${target.name} 취소 → 송장 완료!`);
         triggerFlash("complete");
         beepComplete();
         vibrate([200, 100, 200]);
@@ -731,7 +738,7 @@ export default function ScanPage() {
             : prev
         );
         setStatusKind("ok");
-        setStatusMsg(`${target.name} 제외됨 (송장에서 빠짐)`);
+        setStatusMsg(`${target.name} 취소됨 (송장에서 빠짐)`);
         triggerFlash("ok");
         beepSuccess();
         vibrate(50);
@@ -959,6 +966,13 @@ export default function ScanPage() {
             </div>
           )}
         </div>
+
+        {/* 전체 상품 — 상단 박스와 함께 sticky 고정. 길면 내부 스크롤. */}
+        {invoice && (
+          <div className="mt-2">
+            <OrderText items={items} />
+          </div>
+        )}
       </div>
 
       {/* 완료/부분완료 배너 (자동으로 안 사라짐) */}
@@ -1005,25 +1019,53 @@ export default function ScanPage() {
         </div>
       )}
 
-      {/* 2) 발주서 원문 텍스트 — 스캔 완료분 초록 취소선. 카드와 같은 items 소스 */}
-      {invoice && <OrderText items={items} />}
-
-      {/* 3) 제품 카드 그리드 — 아직 확인 안 한 품목만 */}
-      {invoice && items.length > 0 && (
-        <p className="text-[11px] text-zinc-500 mb-1.5">남은 상품</p>
+      {/* 제품 카드 — "남은 상품"(위) / "완료된 상품"(아래) 두 구역 */}
+      {invoice && items.length === 0 && (
+        <div className="text-center py-8 border border-dashed border-zinc-300 rounded-lg text-zinc-500 text-sm">
+          연결된 품목이 없습니다.
+        </div>
       )}
-      {invoice &&
-        (items.length === 0 ? (
-          <div className="text-center py-8 border border-dashed border-zinc-300 rounded-lg text-zinc-500 text-sm">
-            연결된 품목이 없습니다.
-          </div>
-        ) : displayItems.length === 0 ? (
-          <div className="text-center py-8 border border-dashed border-green-300 bg-green-50 rounded-lg text-green-700 text-sm">
-            모든 품목을 확인했습니다.
-          </div>
-        ) : (
+
+      {/* 남은 상품 */}
+      {invoice && items.length > 0 && (
+        <>
+          <p className="text-[11px] text-zinc-500 mb-1.5">남은 상품</p>
+          {remainingItems.length === 0 ? (
+            <div className="text-center py-6 border border-dashed border-green-300 bg-green-50 rounded-lg text-green-700 text-sm">
+              남은 상품이 없습니다 — 모든 품목을 확인했습니다.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+              {remainingItems.map((it) => (
+                <ScanItemCard
+                  key={it.invoice_item_id}
+                  item={{
+                    itemId: it.item_id,
+                    name: it.name,
+                    quantity: it.quantity,
+                    scannedCount: it.scanned_count,
+                    barcode: it.barcode,
+                    hasImage: it.has_image,
+                    updatedAt: it.updated_at,
+                    isAddedOnScan: it.is_added_on_scan === true,
+                    scanExempt: it.scan_exempt === true,
+                  }}
+                  highlighted={lastScannedId === it.invoice_item_id}
+                  onPick={!it.barcode ? () => setManualTarget(it) : undefined}
+                  onExclude={() => setExcludeTarget(it)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* 완료된 상품 — 카드 클릭 시 메뉴(수량 수정 / 취소) */}
+      {invoice && completedItems.length > 0 && (
+        <>
+          <p className="text-[11px] text-zinc-500 mt-5 mb-1.5">완료된 상품</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-            {displayItems.map((it) => (
+            {completedItems.map((it) => (
               <ScanItemCard
                 key={it.invoice_item_id}
                 item={{
@@ -1038,16 +1080,12 @@ export default function ScanPage() {
                   scanExempt: it.scan_exempt === true,
                 }}
                 highlighted={lastScannedId === it.invoice_item_id}
-                onPick={
-                  !it.barcode ? () => setManualTarget(it) : undefined
-                }
-                onExclude={
-                  isSessionDone ? undefined : () => setExcludeTarget(it)
-                }
+                onMenu={() => setMenuTarget(it)}
               />
             ))}
           </div>
-        ))}
+        </>
+      )}
 
       {/* 보조 영역 - 진행률 > 0이고 pending일 때만 */}
       {showAuxButtons && (
@@ -1123,6 +1161,13 @@ export default function ScanPage() {
       )}
       {manualTarget && (
         <QuantityModal
+          // 완료 품목을 메뉴에서 고른 경우엔 "수량 수정", 그 외엔 "수동 챙김"
+          title={
+            manualTarget.scanned_count >= manualTarget.quantity &&
+            manualTarget.quantity > 0
+              ? "수량 수정"
+              : "수동 챙김"
+          }
           item={{
             invoice_item_id: manualTarget.invoice_item_id,
             name: manualTarget.name,
@@ -1141,6 +1186,22 @@ export default function ScanPage() {
           scannedCount={excludeTarget.scanned_count}
           onCancel={() => setExcludeTarget(null)}
           onConfirm={handleExclude}
+        />
+      )}
+      {menuTarget && (
+        <ScanItemMenuModal
+          itemName={menuTarget.name}
+          onEditQty={() => {
+            const t = menuTarget;
+            setMenuTarget(null);
+            setManualTarget(t);
+          }}
+          onCancelItem={() => {
+            const t = menuTarget;
+            setMenuTarget(null);
+            setExcludeTarget(t);
+          }}
+          onClose={() => setMenuTarget(null)}
         />
       )}
     </div>

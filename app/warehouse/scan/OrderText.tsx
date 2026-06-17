@@ -16,9 +16,10 @@ export default function OrderText({ items }: { items: OrderTextItem[] }) {
   if (items.length === 0) return null;
 
   return (
-    <div className="mb-4 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+    <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
       <p className="text-[11px] text-zinc-500 mb-1.5">전체 상품</p>
-      <p className="text-sm leading-relaxed">
+      {/* 길면 이 영역 안에서만 스크롤 — 검수 카드 공간을 너무 잡아먹지 않게 */}
+      <p className="text-sm leading-relaxed max-h-[26vh] overflow-y-auto">
         {items.map((it, i) => {
           const label = it.display_name?.trim() || it.name;
           // 모든 품목을 원문 순서 그대로. 완료(다 챙김/다 찍음)면 취소선.
