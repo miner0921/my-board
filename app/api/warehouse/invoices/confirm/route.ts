@@ -149,7 +149,7 @@ export async function POST(request: Request) {
               p.invoice.invoiceNo,
               p.invoice.recipientName || p.order?.recipientName || null,
               p.invoice.recipientPhone || p.order?.recipientPhone || null,
-              p.invoice.recipientAddress || p.order?.address || null,
+              p.order?.address || p.invoice.recipientAddress || null,
               p.order?.postalCode || null,
               deliveryNote,
               p.invoice.orderNo || p.order?.orderNo || null,

@@ -134,7 +134,7 @@ export async function POST(request: Request) {
         recipientPhone:
           m.invoice.recipientPhone || m.order?.recipientPhone || "",
         recipientAddress:
-          m.invoice.recipientAddress || m.order?.address || "",
+          m.order?.address || m.invoice.recipientAddress || "",
         customerType: m.order?.customerType ?? null,
         items,
         notes: parsed.notes,

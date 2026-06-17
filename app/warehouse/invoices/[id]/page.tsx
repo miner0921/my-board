@@ -82,15 +82,21 @@ type InvoiceItem = {
   is_added_on_scan: boolean;
 };
 
+// 항상 한국시간(Asia/Seoul)으로 표시. 서버 컴포넌트라 실행 환경 TZ(UTC)에
+// 영향받지 않도록 timeZone을 명시한다. DB의 TIMESTAMP는 UTC 순간으로 저장됨.
 function formatDate(date: string | null) {
   if (!date) return "-";
-  const d = new Date(date);
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+  const parts = new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(date));
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
 }
 
 // 발주서 시트별 customer_type 매핑 (마이그레이션 007 주석 참고)

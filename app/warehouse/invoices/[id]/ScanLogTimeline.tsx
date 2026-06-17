@@ -25,12 +25,17 @@ const SCAN_REASON_LABEL: Record<string, string> = {
   no_invoice: "송장 미선택 스캔",
 };
 
+// 클라이언트 컴포넌트지만 브라우저 TZ에 의존하지 않고 항상 한국시간으로 통일.
 function formatTime(date: string) {
-  const d = new Date(date);
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  const ss = String(d.getSeconds()).padStart(2, "0");
-  return `${hh}:${mi}:${ss}`;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Seoul",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(date));
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("hour")}:${get("minute")}:${get("second")}`;
 }
 
 export default function ScanLogTimeline({ logs }: { logs: ScanLog[] }) {
