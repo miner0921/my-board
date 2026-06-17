@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, Hand } from "lucide-react";
+import { CheckCircle2, Circle, Hand, X } from "lucide-react";
 
 // 검수 화면 제품 카드 — 이미지 위 + 정보 아래, 한 줄 5개.
 //   - 바코드 있는 품목: 스캔으로 확인
@@ -22,10 +22,12 @@ export default function ScanItemCard({
   item,
   highlighted = false,
   onPick,
+  onExclude,
 }: {
   item: ScanItemCardData;
   highlighted?: boolean;
   onPick?: () => void; // 바코드 없는 품목 수동 챙김
+  onExclude?: () => void; // 송장에서 품목 빼기(제외)
 }) {
   const { quantity, scannedCount } = item;
   const complete = scannedCount >= quantity && quantity > 0;
@@ -65,6 +67,23 @@ export default function ScanItemCard({
         clickable ? "cursor-pointer hover:shadow-md" : ""
       }`}
     >
+      {/* 빼기(제외) — 좌상단. 카드 탭(수동챙김)과 충돌 안 나게 stopPropagation */}
+      {onExclude && (
+        <button
+          type="button"
+          aria-label="송장에서 빼기"
+          title="송장에서 빼기"
+          onClick={(e) => {
+            e.stopPropagation();
+            onExclude();
+          }}
+          onKeyDown={(e) => e.stopPropagation()}
+          className="absolute top-1 left-1 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white/90 border border-zinc-300 text-zinc-500 hover:bg-red-50 hover:text-red-600 hover:border-red-300 shadow-sm transition"
+        >
+          <X size={15} strokeWidth={2.25} />
+        </button>
+      )}
+
       {/* 완료 ✓ / 미완료 ○ */}
       <div className="absolute top-1 right-1 z-10">
         {complete ? (

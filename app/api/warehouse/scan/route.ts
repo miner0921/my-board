@@ -61,7 +61,8 @@ export async function POST(request: Request) {
               COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
               COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
          FROM invoices i
-         LEFT JOIN invoice_items ii ON ii.invoice_id = i.id
+         LEFT JOIN invoice_items ii
+           ON ii.invoice_id = i.id AND ii.excluded_at IS NULL
         WHERE i.invoice_no = $1 AND i.deleted_at IS NULL
         GROUP BY i.id`,
       [barcode]
@@ -88,7 +89,8 @@ export async function POST(request: Request) {
                   COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
                   COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
              FROM invoices i
-             LEFT JOIN invoice_items ii ON ii.invoice_id = i.id
+             LEFT JOIN invoice_items ii
+               ON ii.invoice_id = i.id AND ii.excluded_at IS NULL
             WHERE i.id = $1 AND i.deleted_at IS NULL
             GROUP BY i.id`,
           [currentInvoiceId]
@@ -235,12 +237,13 @@ export async function POST(request: Request) {
       };
 
       // 품목 행 락 (+ 바코드/이름 — 송장 기반 바코드 매칭에 사용)
+      // 제외된 품목(excluded_at)은 매칭/진행률/완료 판정 모두에서 빠진다.
       const rowsRes = await client.query(
         `SELECT ii.id AS invoice_item_id, ii.item_id, ii.quantity, ii.scanned_count,
                 it.name AS item_name, it.barcode AS item_barcode, it.scan_exempt
            FROM invoice_items ii
            JOIN items it ON it.id = ii.item_id
-          WHERE ii.invoice_id = $1
+          WHERE ii.invoice_id = $1 AND ii.excluded_at IS NULL
           FOR UPDATE OF ii`,
         [currentInvoiceId]
       );
@@ -268,14 +271,26 @@ export async function POST(request: Request) {
           // 완료된 송장이면 먼저 자동 재개
           const autoReopened = await triggerAutoReopen();
 
+          // 같은 품목이 이전에 "제외"되어 행이 남아 있으면 UNIQUE(invoice_id,item_id)
+          // 충돌 → 새로 만들지 않고 그 행을 복구(excluded 해제)하며 +1.
+          // 신규면 1/1 로 INSERT. 어느 쪽이든 RETURNING 실제 값으로 진행률 계산.
           const ins = await client.query(
             `INSERT INTO invoice_items
                (invoice_id, item_id, quantity, scanned_count, display_name, is_added_on_scan)
              VALUES ($1, $2, 1, 1, $3, TRUE)
-             RETURNING id AS invoice_item_id`,
+             ON CONFLICT (invoice_id, item_id) DO UPDATE
+               SET scanned_count = invoice_items.scanned_count + 1,
+                   excluded_at = NULL, excluded_by = NULL, exclude_reason = NULL
+             RETURNING id AS invoice_item_id, quantity, scanned_count, is_added_on_scan`,
             [currentInvoiceId, matchedItem.id, matchedItem.name]
           );
-          const newInvoiceItemId = ins.rows[0].invoice_item_id as number;
+          const newRow = ins.rows[0] as {
+            invoice_item_id: number;
+            quantity: number;
+            scanned_count: number;
+            is_added_on_scan: boolean;
+          };
+          const newInvoiceItemId = newRow.invoice_item_id;
 
           // 카드 그리드 표시용 items 정보
           const itemInfo = await client.query(
@@ -301,14 +316,14 @@ export async function POST(request: Request) {
             [currentInvoiceId, matchedItem.id, userId]
           );
 
-          // 새 행을 포함한 진행률 재계산 (스캔 불필요 품목은 제외)
+          // 새(또는 복구된) 행을 포함한 진행률 재계산 — RETURNING 실제 값 사용
           const newRows = [
             ...rows,
             {
               invoice_item_id: newInvoiceItemId,
               item_id: matchedItem.id,
-              quantity: 1,
-              scanned_count: 1,
+              quantity: newRow.quantity,
+              scanned_count: newRow.scanned_count,
               item_name: matchedItem.name as string,
               item_barcode: null,
               scan_exempt: false,
@@ -353,12 +368,12 @@ export async function POST(request: Request) {
               item_id: matchedItem.id,
               name: matchedItem.name as string,
               display_name: matchedItem.name as string,
-              quantity: 1,
-              scanned_count: 1,
+              quantity: newRow.quantity,
+              scanned_count: newRow.scanned_count,
               barcode: itemInfo.rows[0]?.barcode ?? null,
               updated_at: itemInfo.rows[0]?.updated_at ?? new Date().toISOString(),
               has_image: itemInfo.rows[0]?.has_image ?? false,
-              is_added_on_scan: true,
+              is_added_on_scan: newRow.is_added_on_scan,
             },
             invoice: {
               id: currentInvoiceId,
@@ -680,11 +695,13 @@ async function loadInvoiceFull(invoiceId: number): Promise<{
          COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
          COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
        FROM invoices i
-       LEFT JOIN invoice_items ii ON ii.invoice_id = i.id
+       LEFT JOIN invoice_items ii
+         ON ii.invoice_id = i.id AND ii.excluded_at IS NULL
        WHERE i.id = $1 AND i.deleted_at IS NULL
        GROUP BY i.id`,
       [invoiceId]
     ),
+    // 검수 화면 카드/원문은 제외되지 않은 품목만 보여준다.
     query(
       `SELECT
          ii.id AS invoice_item_id,
@@ -693,7 +710,7 @@ async function loadInvoiceFull(invoiceId: number): Promise<{
          (it.image_data IS NOT NULL) AS has_image
        FROM invoice_items ii
        JOIN items it ON it.id = ii.item_id
-       WHERE ii.invoice_id = $1
+       WHERE ii.invoice_id = $1 AND ii.excluded_at IS NULL
        ORDER BY ii.id`,
       [invoiceId]
     ),

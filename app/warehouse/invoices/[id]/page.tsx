@@ -4,6 +4,8 @@ import { auth } from "@/auth";
 import { query } from "@/lib/db";
 import { RefreshCw, ScanLine } from "lucide-react";
 import ReopenButton from "./ReopenButton";
+import RestoreItemButton from "./RestoreItemButton";
+import ExcludeItemButton from "./ExcludeItemButton";
 import DeleteInvoiceButton from "./DeleteInvoiceButton";
 import ScanLogTimeline, { type ScanLog } from "./ScanLogTimeline";
 import InvoiceItemCard from "../../_components/InvoiceItemCard";
@@ -81,6 +83,9 @@ type InvoiceItem = {
   updated_at: string;
   is_added_on_scan: boolean;
   scan_exempt: boolean;
+  excluded_at: string | null;
+  exclude_reason: string | null;
+  excluded_by_name: string | null;
 };
 
 // 항상 한국시간(Asia/Seoul)으로 표시. 서버 컴포넌트라 실행 환경 TZ(UTC)에
@@ -160,21 +165,25 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
        LEFT JOIN users uc          ON i.created_by      = uc.id
        LEFT JOIN users us          ON i.scan_started_by = us.id
        LEFT JOIN users uo          ON i.completed_by    = uo.id
-       LEFT JOIN invoice_items ii  ON ii.invoice_id     = i.id
+       LEFT JOIN invoice_items ii  ON ii.invoice_id = i.id AND ii.excluded_at IS NULL
        WHERE i.id = $1 AND i.deleted_at IS NULL
        GROUP BY i.id, uc.nickname, us.nickname, uo.nickname`,
       [id]
     ),
     // 품목 카드용 — image_data(BYTEA)는 SELECT 안 하고 has_image만
     query(
+      // 제외된 품목도 보여준다(기록 보존·추적). 카드에서 "제외됨"으로 표시.
       `SELECT
          ii.id AS invoice_item_id,
          ii.item_id, ii.quantity, ii.scanned_count, ii.display_name,
          ii.is_added_on_scan,
+         ii.excluded_at, ii.exclude_reason,
+         ue.nickname AS excluded_by_name,
          it.name, it.barcode, it.updated_at, it.scan_exempt,
          (it.image_data IS NOT NULL) AS has_image
        FROM invoice_items ii
        JOIN items it ON it.id = ii.item_id
+       LEFT JOIN users ue ON ii.excluded_by = ue.id
        WHERE ii.invoice_id = $1
        ORDER BY ii.id`,
       [id]
@@ -490,9 +499,29 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
                   updatedAt: it.updated_at,
                   isAddedOnScan: it.is_added_on_scan,
                   scanExempt: it.scan_exempt,
+                  excluded: !!it.excluded_at,
+                  excludeReason: it.exclude_reason,
+                  excludedByName: it.excluded_by_name,
                 }}
                 variant="detail"
                 isPartial={invoice.status === "completed_partial"}
+                action={
+                  it.excluded_at ? (
+                    <RestoreItemButton
+                      invoiceId={invoice.id}
+                      invoiceItemId={it.invoice_item_id}
+                      itemName={it.name}
+                    />
+                  ) : (
+                    <ExcludeItemButton
+                      invoiceId={invoice.id}
+                      invoiceItemId={it.invoice_item_id}
+                      itemName={it.name}
+                      quantity={it.quantity}
+                      scannedCount={it.scanned_count}
+                    />
+                  )
+                }
               />
             ))}
           </div>

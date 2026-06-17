@@ -4,20 +4,29 @@ import { auth } from "@/auth";
 import { logAccess } from "@/lib/audit";
 
 // ─────────────────────────────────────────────────────────────
-// POST /api/warehouse/scan/manual
-// 바코드 없는 품목 + 동봉물의 "수동 챙김" 확인.
-// body: { invoice_id, invoice_item_id, count }  (count = 챙긴 수량, 절대값)
+// POST /api/warehouse/scan/exclude
+// 검수 중 송장에서 품목을 제외(빼기) / 복구.
+// body: { invoice_id, invoice_item_id, action: "exclude"|"restore", reason? }
 //
-// scanned_count 를 count 로 set 하고, 전체 품목 기준으로 완료를 재판정한다.
-// (동봉 포함 모든 품목이 채워져야 완료 — 검수 제외 없음)
-// 완료된 송장을 수정하면 스캔과 동일하게 자동 재개(invoice_reopens) 처리.
-// 응답 형식은 스캔 API와 동일(scan_ok / invoice_complete)해 클라이언트가 재사용.
+// 제외(exclude):
+//   - invoice_items.excluded_at/by/reason 세팅 (행은 보존, 진행률/완료에서만 제외)
+//   - scanned_count / scan_logs 는 그대로 → 이미 챙긴 기록 보존
+//   - 제외 후 남은 품목으로 진행률·완료 재판정 (남은 게 다 채워지면 자동 완료)
+//   - 완료 송장에서 제외는 미완료로 만들지 않으므로 자동 재개(reopen) 불필요
+//
+// 복구(restore):
+//   - 세 컬럼 NULL 로
+//   - 완료 송장에 품목이 되살아나 미완료가 되면 기존 흐름대로 자동 재개(invoice_reopens)
+//
+// 권한: 로그인한 누구나 (force-add 와 동일 정책 — 역할 분기 없음)
+// 응답: 스캔 API 와 동일 형태(scan_ok / invoice_complete)로 클라이언트 재사용.
 // ─────────────────────────────────────────────────────────────
 
 type Body = {
   invoice_id?: unknown;
   invoice_item_id?: unknown;
-  count?: unknown;
+  action?: unknown;
+  reason?: unknown;
 };
 
 export async function POST(request: Request) {
@@ -36,21 +45,22 @@ export async function POST(request: Request) {
       typeof body.invoice_id === "number" ? body.invoice_id : null;
     const invoiceItemId =
       typeof body.invoice_item_id === "number" ? body.invoice_item_id : null;
-    const count =
-      typeof body.count === "number" &&
-      Number.isInteger(body.count) &&
-      body.count >= 0
-        ? body.count
-        : null;
+    const action =
+      body.action === "restore" ? "restore" : body.action === "exclude" ? "exclude" : null;
+    const reasonRaw = typeof body.reason === "string" ? body.reason.trim() : "";
+    // 사유는 선택. 너무 길면 컬럼(200) 안에서 자른다.
+    const reason: string | null =
+      reasonRaw.length > 0 ? reasonRaw.slice(0, 200) : null;
 
-    if (!invoiceId || !invoiceItemId || count === null) {
+    if (!invoiceId || !invoiceItemId || !action) {
       return NextResponse.json(
-        { error: "invoice_id, invoice_item_id, count(0 이상 정수)가 필요합니다." },
+        { error: "invoice_id, invoice_item_id, action(exclude|restore)이 필요합니다." },
         { status: 400 }
       );
     }
 
     const result = await withTransaction(async (client) => {
+      // 송장 락 (invoices → invoice_items 순서로 데드락 방지)
       const invSel = await client.query(
         `SELECT id, invoice_no, status, completed_at, completed_by,
                 completion_reason, completion_note
@@ -71,13 +81,13 @@ export async function POST(request: Request) {
       const isInvoiceDone =
         invRow.status === "completed" || invRow.status === "completed_partial";
 
-      // 제외된 품목은 완료 판정/대상에서 빠진다.
+      // 대상 행 + 전체 행 잠금 (제외 상태 포함해서 가져옴)
       const rowsRes = await client.query(
         `SELECT ii.id AS invoice_item_id, ii.item_id, ii.quantity, ii.scanned_count,
-                it.name AS item_name
+                ii.excluded_at, it.name AS item_name
            FROM invoice_items ii
            JOIN items it ON it.id = ii.item_id
-          WHERE ii.invoice_id = $1 AND ii.excluded_at IS NULL
+          WHERE ii.invoice_id = $1
           FOR UPDATE OF ii`,
         [invoiceId]
       );
@@ -86,20 +96,70 @@ export async function POST(request: Request) {
         item_id: number;
         quantity: number;
         scanned_count: number;
+        excluded_at: string | null;
         item_name: string;
       }> = rowsRes.rows;
       const target = rows.find((r) => r.invoice_item_id === invoiceItemId);
       if (!target) return { kind: "item_missing" as const };
 
-      // 완료된 송장 수정 → 자동 재개
+      // 멱등 체크 — 이미 원하는 상태면 그대로 통과(상태만 재계산)
+      const alreadyExcluded = target.excluded_at !== null;
+
+      if (action === "exclude") {
+        if (!alreadyExcluded) {
+          await client.query(
+            `UPDATE invoice_items
+                SET excluded_at = NOW(), excluded_by = $1, exclude_reason = $2
+              WHERE id = $3`,
+            [userId, reason, invoiceItemId]
+          );
+          await client.query(
+            `INSERT INTO scan_logs (invoice_id, item_id, user_id, is_error, error_reason)
+             VALUES ($1, $2, $3, false, 'item_excluded')`,
+            [invoiceId, target.item_id, userId]
+          );
+        }
+        target.excluded_at = "now"; // 아래 재계산에서 제외로 취급
+      } else {
+        // restore
+        if (alreadyExcluded) {
+          await client.query(
+            `UPDATE invoice_items
+                SET excluded_at = NULL, excluded_by = NULL, exclude_reason = NULL
+              WHERE id = $1`,
+            [invoiceItemId]
+          );
+          await client.query(
+            `INSERT INTO scan_logs (invoice_id, item_id, user_id, is_error, error_reason)
+             VALUES ($1, $2, $3, false, 'item_restored')`,
+            [invoiceId, target.item_id, userId]
+          );
+        }
+        target.excluded_at = null; // 재계산에서 다시 포함
+      }
+
+      // ── 진행률/완료 재판정 — 제외되지 않은 품목만 기준 ──
+      const activeRows = rows.filter((r) => r.excluded_at === null);
+      const totalQty = activeRows.reduce((s, r) => s + r.quantity, 0);
+      const scannedQty = activeRows.reduce(
+        (s, r) => s + Math.min(r.scanned_count, r.quantity),
+        0
+      );
+      const allFilled =
+        activeRows.length > 0 &&
+        activeRows.every((r) => r.scanned_count >= r.quantity);
+
       let autoReopened = false;
-      if (isInvoiceDone) {
+      let completedAt: string | null = null;
+
+      if (action === "restore" && isInvoiceDone && !allFilled) {
+        // 복구로 다시 미완료가 된 완료 송장 → 자동 재개 (스캔 흐름과 동일)
         await client.query(
           `INSERT INTO invoice_reopens
              (invoice_id, reopened_by, reason,
               prev_status, prev_completion_reason, prev_completion_note,
               prev_completed_at, prev_completed_by)
-           VALUES ($1, $2, '수동 챙김 수정으로 자동 재개', $3, $4, $5, $6, $7)`,
+           VALUES ($1, $2, '품목 복구로 자동 재개', $3, $4, $5, $6, $7)`,
           [
             invoiceId,
             userId,
@@ -118,41 +178,8 @@ export async function POST(request: Request) {
           [invoiceId]
         );
         autoReopened = true;
-      }
-
-      // 챙긴 수량 절대값으로 set
-      await client.query(
-        `UPDATE invoice_items SET scanned_count = $1 WHERE id = $2`,
-        [count, invoiceItemId]
-      );
-      await client.query(
-        `UPDATE invoices
-            SET scan_started_at = COALESCE(scan_started_at, NOW()),
-                scan_started_by = COALESCE(scan_started_by, $1)
-          WHERE id = $2`,
-        [userId, invoiceId]
-      );
-      await client.query(
-        `INSERT INTO scan_logs (invoice_id, item_id, user_id, is_error, error_reason)
-         VALUES ($1, $2, $3, false, 'manual_pick')`,
-        [invoiceId, target.item_id, userId]
-      );
-
-      // 완료 재판정 — 모든 품목 기준
-      const updatedRows = rows.map((r) =>
-        r.invoice_item_id === invoiceItemId ? { ...r, scanned_count: count } : r
-      );
-      const totalQty = updatedRows.reduce((s, r) => s + r.quantity, 0);
-      const scannedQty = updatedRows.reduce(
-        (s, r) => s + Math.min(r.scanned_count, r.quantity),
-        0
-      );
-      const allFilled =
-        updatedRows.length > 0 &&
-        updatedRows.every((r) => r.scanned_count >= r.quantity);
-
-      let completedAt: string | null = null;
-      if (allFilled) {
+      } else if (action === "exclude" && allFilled && !isInvoiceDone) {
+        // 제외 결과 남은 품목이 전부 채워졌으면 자동 완료
         const upd = await client.query(
           `UPDATE invoices
               SET status = 'completed', completed_at = NOW(),
@@ -164,20 +191,37 @@ export async function POST(request: Request) {
         if (upd.rows.length > 0) completedAt = upd.rows[0].completed_at;
       }
 
+      // 처리 후 송장의 실제 상태를 명확히 계산한다.
+      //   - 자동 완료됨            → completed
+      //   - 자동 재개됨            → pending
+      //   - 그 외 이미 완료/부분완료 → 기존 상태 유지(제외는 완료를 깨지 않음)
+      //   - 그 외                   → pending
+      const finalStatus = completedAt
+        ? "completed"
+        : autoReopened
+          ? "pending"
+          : isInvoiceDone
+            ? invRow.status
+            : "pending";
+      // 풀 완료(=완료 배너)만 invoice_complete 로 응답
+      const completed = finalStatus === "completed";
+
       return {
         kind: "ok" as const,
         autoReopened,
         invoiceNo: invRow.invoice_no,
         item: {
-          invoice_item_id: invoiceItemId,
+          invoice_item_id: target.invoice_item_id,
           item_id: target.item_id,
           name: target.item_name,
           quantity: target.quantity,
-          scanned_count: count,
+          scanned_count: target.scanned_count,
+          excluded: action === "exclude",
         },
         scannedQty,
         totalQty,
-        completed: allFilled && !!completedAt,
+        finalStatus,
+        completed,
         completedAt,
       };
     });
@@ -195,6 +239,13 @@ export async function POST(request: Request) {
       );
     }
 
+    await logAccess({
+      session,
+      action: action === "exclude" ? "invoice.item_excluded" : "invoice.item_restored",
+      targetType: "invoice",
+      targetId: invoiceId,
+      request,
+    });
     if (result.autoReopened) {
       await logAccess({
         session,
@@ -204,7 +255,7 @@ export async function POST(request: Request) {
         request,
       });
     }
-    if (result.completed) {
+    if (result.completed && action === "exclude") {
       await logAccess({
         session,
         action: "invoice.complete",
@@ -216,19 +267,20 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       type: result.completed ? "invoice_complete" : "scan_ok",
+      action,
       auto_reopened: result.autoReopened,
       item: result.item,
       invoice: {
         id: invoiceId,
         invoice_no: result.invoiceNo,
-        status: result.completed ? "completed" : "pending",
+        status: result.finalStatus,
         scanned_qty: result.scannedQty,
         total_qty: result.totalQty,
         completed_at: result.completedAt,
       },
     });
   } catch (error) {
-    console.error("수동 챙김 API 에러:", error);
+    console.error("품목 제외/복구 API 에러:", error);
     return NextResponse.json(
       { error: "서버 오류가 발생했습니다." },
       { status: 500 }

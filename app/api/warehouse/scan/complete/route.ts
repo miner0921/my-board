@@ -70,7 +70,8 @@ export async function POST(request: Request) {
       const sumRes = await client.query(
         `SELECT COALESCE(SUM(scanned_count), 0)::int AS scanned,
                 COALESCE(SUM(quantity), 0)::int      AS total
-           FROM invoice_items WHERE invoice_id = $1`,
+           FROM invoice_items
+          WHERE invoice_id = $1 AND excluded_at IS NULL`,
         [invoiceId]
       );
       const scanned = sumRes.rows[0]?.scanned ?? 0;

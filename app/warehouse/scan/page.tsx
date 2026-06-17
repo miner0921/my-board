@@ -9,6 +9,7 @@ import OverQuantityModal from "./OverQuantityModal";
 import OrderText from "./OrderText";
 import ScanItemCard from "./ScanItemCard";
 import QuantityModal from "./QuantityModal";
+import ExcludeItemModal from "./ExcludeItemModal";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import {
   beepComplete,
@@ -138,6 +139,8 @@ export default function ScanPage() {
 
   // 수동 챙김(수량 입력) 대상 품목
   const [manualTarget, setManualTarget] = useState<ItemPayload | null>(null);
+  // 제외(빼기) 대상 품목
+  const [excludeTarget, setExcludeTarget] = useState<ItemPayload | null>(null);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -148,7 +151,8 @@ export default function ScanPage() {
     invoiceChange !== null ||
     partialOpen ||
     cancelOpen ||
-    manualTarget !== null;
+    manualTarget !== null ||
+    excludeTarget !== null;
 
   // 송장이 완료/부분완료 상태면 "세션 끝" — 품목 스캔은 서버에서 자연스럽게
   // scan_no_invoice로 처리되도록 current_invoice_id=null로 보냄.
@@ -666,6 +670,82 @@ export default function ScanPage() {
     (it) => !(it.scanned_count >= it.quantity && it.quantity > 0)
   );
 
+  // 품목 제외(빼기) 확정 — 검수 화면에서 송장에서 빼기
+  const handleExclude = async (reason: string) => {
+    const target = excludeTarget;
+    if (!invoice || !target) return;
+    setExcludeTarget(null);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/warehouse/scan/exclude", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          invoice_id: invoice.id,
+          invoice_item_id: target.invoice_item_id,
+          action: "exclude",
+          reason,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setStatusKind("error");
+        setStatusMsg(data?.error ?? "품목 제외에 실패했습니다.");
+        triggerFlash("error");
+        beepError();
+        vibrate([100, 50, 100]);
+        return;
+      }
+      // 제외된 행은 화면(카드/원문)에서 제거
+      setItems((prev) =>
+        prev.filter((it) => it.invoice_item_id !== target.invoice_item_id)
+      );
+      if (lastScannedId === target.invoice_item_id) setLastScannedId(null);
+
+      if (data.type === "invoice_complete") {
+        // 제외 결과 남은 품목이 전부 채워져 자동 완료된 경우
+        setInvoice((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: "completed",
+                scanned_qty: data.invoice.scanned_qty,
+                total_qty: data.invoice.total_qty,
+              }
+            : prev
+        );
+        setStatusKind("ok");
+        setStatusMsg(`${target.name} 제외 → 송장 완료!`);
+        triggerFlash("complete");
+        beepComplete();
+        vibrate([200, 100, 200]);
+        setCompleteBanner({ kind: "full", invoice_no: data.invoice.invoice_no });
+      } else {
+        setInvoice((prev) =>
+          prev
+            ? {
+                ...prev,
+                scanned_qty: data.invoice.scanned_qty,
+                total_qty: data.invoice.total_qty,
+              }
+            : prev
+        );
+        setStatusKind("ok");
+        setStatusMsg(`${target.name} 제외됨 (송장에서 빠짐)`);
+        triggerFlash("ok");
+        beepSuccess();
+        vibrate(50);
+      }
+    } catch (e) {
+      console.error(e);
+      setStatusKind("error");
+      setStatusMsg("네트워크 오류가 발생했습니다.");
+    } finally {
+      setLoading(false);
+      resetAndFocus();
+    }
+  };
+
   // 수동 챙김 확정 (바코드 없는 품목 + 동봉)
   const handleManualPick = async (count: number) => {
     const target = manualTarget;
@@ -961,6 +1041,9 @@ export default function ScanPage() {
                 onPick={
                   !it.barcode ? () => setManualTarget(it) : undefined
                 }
+                onExclude={
+                  isSessionDone ? undefined : () => setExcludeTarget(it)
+                }
               />
             ))}
           </div>
@@ -1049,6 +1132,15 @@ export default function ScanPage() {
           }}
           onConfirm={handleManualPick}
           onClose={() => setManualTarget(null)}
+        />
+      )}
+      {excludeTarget && (
+        <ExcludeItemModal
+          itemName={excludeTarget.name}
+          quantity={excludeTarget.quantity}
+          scannedCount={excludeTarget.scanned_count}
+          onCancel={() => setExcludeTarget(null)}
+          onConfirm={handleExclude}
         />
       )}
     </div>
