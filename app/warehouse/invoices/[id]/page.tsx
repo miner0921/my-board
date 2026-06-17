@@ -172,7 +172,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
     ),
     // 품목 카드용 — image_data(BYTEA)는 SELECT 안 하고 has_image만
     query(
-      // 제외된 품목도 보여준다(기록 보존·추적). 카드에서 "제외됨"으로 표시.
+      // 취소된 품목도 보여준다(기록 보존·추적). 카드에서 "취소됨"으로 표시.
       `SELECT
          ii.id AS invoice_item_id,
          ii.item_id, ii.quantity, ii.scanned_count, ii.display_name,
@@ -201,7 +201,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
     ),
     // 스캔 기록 — 누가/언제/무슨 품목(바코드)을 찍었는지, 오류 포함. 시간순.
     query(
-      `SELECT s.id, s.scanned_at, s.is_error, s.error_reason, s.item_id,
+      `SELECT s.id, s.scanned_at, s.is_error, s.error_reason, s.item_id, s.quantity,
               it.name AS item_name, it.barcode AS item_barcode,
               u.nickname AS user_name
          FROM scan_logs s

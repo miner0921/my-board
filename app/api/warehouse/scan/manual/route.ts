@@ -132,10 +132,17 @@ export async function POST(request: Request) {
           WHERE id = $2`,
         [userId, invoiceId]
       );
+      // 증감 방향 분기: 수정 전(target.scanned_count) vs 새 수량(count).
+      //   후 >= 전 → 수동 추가(manual_add), 변화량 = 후 - 전
+      //   후 <  전 → 수동 취소(manual_remove), 변화량 = 전 - 후
+      const prevCount = target.scanned_count;
+      const isAdd = count >= prevCount;
+      const changeReason = isAdd ? "manual_add" : "manual_remove";
+      const changeQty = isAdd ? count - prevCount : prevCount - count;
       await client.query(
-        `INSERT INTO scan_logs (invoice_id, item_id, user_id, is_error, error_reason)
-         VALUES ($1, $2, $3, false, 'manual_pick')`,
-        [invoiceId, target.item_id, userId]
+        `INSERT INTO scan_logs (invoice_id, item_id, user_id, is_error, error_reason, quantity)
+         VALUES ($1, $2, $3, false, $4, $5)`,
+        [invoiceId, target.item_id, userId, changeReason, changeQty]
       );
 
       // 완료 재판정 — 모든 품목 기준

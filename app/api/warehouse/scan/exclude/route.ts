@@ -113,10 +113,11 @@ export async function POST(request: Request) {
               WHERE id = $3`,
             [userId, reason, invoiceItemId]
           );
+          // quantity: 취소된 수량 = 그 순간 챙겨져 있던 scanned_count.
           await client.query(
-            `INSERT INTO scan_logs (invoice_id, item_id, user_id, is_error, error_reason)
-             VALUES ($1, $2, $3, false, 'item_excluded')`,
-            [invoiceId, target.item_id, userId]
+            `INSERT INTO scan_logs (invoice_id, item_id, user_id, is_error, error_reason, quantity)
+             VALUES ($1, $2, $3, false, 'item_excluded', $4)`,
+            [invoiceId, target.item_id, userId, target.scanned_count]
           );
         }
         target.excluded_at = "now"; // 아래 재계산에서 제외로 취급
@@ -129,10 +130,11 @@ export async function POST(request: Request) {
               WHERE id = $1`,
             [invoiceItemId]
           );
+          // quantity: 복구된 수량 = 보존돼 있던 scanned_count.
           await client.query(
-            `INSERT INTO scan_logs (invoice_id, item_id, user_id, is_error, error_reason)
-             VALUES ($1, $2, $3, false, 'item_restored')`,
-            [invoiceId, target.item_id, userId]
+            `INSERT INTO scan_logs (invoice_id, item_id, user_id, is_error, error_reason, quantity)
+             VALUES ($1, $2, $3, false, 'item_restored', $4)`,
+            [invoiceId, target.item_id, userId, target.scanned_count]
           );
         }
         target.excluded_at = null; // 재계산에서 다시 포함

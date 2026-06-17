@@ -310,9 +310,10 @@ export async function POST(request: Request) {
           );
 
           // 의도적 추가라 is_error=false. 추적용으로 reason은 남김.
+          //   quantity: 현장 추가 이벤트의 변화량 = +1.
           await client.query(
-            `INSERT INTO scan_logs (invoice_id, item_id, user_id, is_error, error_reason)
-             VALUES ($1, $2, $3, false, 'wrong_item_added')`,
+            `INSERT INTO scan_logs (invoice_id, item_id, user_id, is_error, error_reason, quantity)
+             VALUES ($1, $2, $3, false, 'wrong_item_added', 1)`,
             [currentInvoiceId, matchedItem.id, userId]
           );
 
@@ -437,9 +438,10 @@ export async function POST(request: Request) {
 
       // scan_log — 정상이든 강제 over든 사용자 의도이므로 is_error=false.
       //   reason: 강제 over면 'over_quantity_forced', 정상이면 NULL.
+      //   quantity: 이 스캔의 변화량 = +1 (정상·초과 모두 한 번에 1개).
       await client.query(
-        `INSERT INTO scan_logs (invoice_id, item_id, user_id, is_error, error_reason)
-         VALUES ($1, $2, $3, false, $4)`,
+        `INSERT INTO scan_logs (invoice_id, item_id, user_id, is_error, error_reason, quantity)
+         VALUES ($1, $2, $3, false, $4, 1)`,
         [
           currentInvoiceId,
           target.item_id,
