@@ -8,17 +8,19 @@ export default function DeleteButton({ itemId }: { itemId: number }) {
   const [loading, setLoading] = useState(false);
 
   const handleDelete = async () => {
-    if (!confirm("정말 이 품목을 삭제하시겠습니까?")) return;
+    if (!confirm("이 품목을 숨길까요? (목록에서 감춰지며 복구할 수 있습니다)")) return;
 
     setLoading(true);
     try {
-      const res = await fetch(`/api/warehouse/items/${itemId}`, {
-        method: "DELETE",
+      const res = await fetch(`/api/warehouse/items/hide`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [itemId] }),
       });
 
       if (!res.ok) {
         const data = await res.json();
-        alert(data.error || "삭제 실패");
+        alert(data.error || "숨김 실패");
         setLoading(false);
         return;
       }

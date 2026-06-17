@@ -41,7 +41,9 @@ export async function POST(request: Request) {
     }
 
     // 기존 품목 정규화명 집합
-    const existing = await query("SELECT name FROM items");
+    const existing = await query(
+      "SELECT name FROM items WHERE deleted_at IS NULL"
+    );
     const knownNormalized = new Set<string>(
       existing.rows.map((r) => normalizeProductName(r.name))
     );

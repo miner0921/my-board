@@ -5,6 +5,11 @@ import { query } from "@/lib/db";
 import { Upload } from "lucide-react";
 import InvoiceGroup from "./InvoiceGroup";
 import UploadButton from "./UploadButton";
+import {
+  BulkSelectProvider,
+  BulkBar,
+  BulkCheckbox,
+} from "../_components/BulkSelect";
 
 type InvoiceRow = {
   id: number;
@@ -159,6 +164,7 @@ type PageProps = {
     tab?: string;
     from?: string;
     to?: string;
+    deleted?: string;
   }>;
 };
 
@@ -172,7 +178,11 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
     tab: tabParam,
     from: fromParam,
     to: toParam,
+    deleted: delParam,
   } = await searchParams;
+  const isAdmin =
+    ((session.user as { role?: string }).role ?? "user") === "admin";
+  const viewDeleted = isAdmin && delParam === "1";
   const q = (qParam ?? "").trim();
   const tab: Tab = tabParam === "done" ? "done" : "pending";
   const customerType =
@@ -188,8 +198,10 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
   // 날짜 필터는 현재 탭이 보여주는 날짜 컬럼 기준 (대기=등록일, 완료=완료일)
   const orderCol = tab === "done" ? "i.completed_at" : "i.created_at";
 
-  // 동적 WHERE 구성
-  const conditions: string[] = [];
+  // 동적 WHERE 구성. 숨김 여부 필터를 항상 먼저 적용.
+  const conditions: string[] = [
+    viewDeleted ? "i.deleted_at IS NOT NULL" : "i.deleted_at IS NULL",
+  ];
   const params: unknown[] = [];
   if (q !== "") {
     params.push(`%${q}%`);
@@ -197,12 +209,15 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
       `(i.invoice_no ILIKE $${params.length} OR i.order_no ILIKE $${params.length} OR i.recipient_name ILIKE $${params.length} OR i.recipient_phone ILIKE $${params.length})`
     );
   }
-  if (tab === "done") {
-    conditions.push(
-      `i.status IN ('completed', 'completed_partial') AND i.completed_at IS NOT NULL`
-    );
-  } else {
-    conditions.push(`i.status = 'pending'`);
+  // 숨김 보기에서는 상태 탭 조건을 적용하지 않고 숨긴 송장 전부를 보여준다.
+  if (!viewDeleted) {
+    if (tab === "done") {
+      conditions.push(
+        `i.status IN ('completed', 'completed_partial') AND i.completed_at IS NOT NULL`
+      );
+    } else {
+      conditions.push(`i.status = 'pending'`);
+    }
   }
   if (customerType !== "all") {
     if (customerType === "none") {
@@ -272,24 +287,49 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
     return qs ? `/warehouse/invoices?${qs}` : "/warehouse/invoices";
   };
 
-  // 초기화 링크 — 현재 탭은 유지하되 검색/필터만 비움
-  const resetHref =
-    tab === "done" ? "/warehouse/invoices?tab=done" : "/warehouse/invoices";
+  // 초기화 링크 — 현재 보기(탭/숨김)는 유지하되 검색/필터만 비움
+  const resetHref = viewDeleted
+    ? "/warehouse/invoices?deleted=1"
+    : tab === "done"
+      ? "/warehouse/invoices?tab=done"
+      : "/warehouse/invoices";
 
   return (
     <div className="max-w-6xl">
       {/* 액션 바 */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <p className="text-sm text-zinc-500">
-          발주서와 송장 파일을 업로드하면 자동으로 등록됩니다
+          {viewDeleted
+            ? "숨긴 송장 — 선택해서 복구할 수 있습니다 (검수기록 보존됨)"
+            : "발주서와 송장 파일을 업로드하면 자동으로 등록됩니다"}
         </p>
-        <UploadButton className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition font-medium self-start sm:self-auto">
-          <Upload size={16} strokeWidth={1.75} />
-          발주서 및 송장 업로드
-        </UploadButton>
+        {viewDeleted ? (
+          <Link
+            href="/warehouse/invoices"
+            className="px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition self-start sm:self-auto"
+          >
+            ← 활성 송장
+          </Link>
+        ) : (
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            {isAdmin && (
+              <Link
+                href="/warehouse/invoices?deleted=1"
+                className="px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition"
+              >
+                숨긴 항목 보기
+              </Link>
+            )}
+            <UploadButton className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition font-medium">
+              <Upload size={16} strokeWidth={1.75} />
+              발주서 및 송장 업로드
+            </UploadButton>
+          </div>
+        )}
       </div>
 
-      {/* 상태 탭 */}
+      {/* 상태 탭 (숨김 보기에서는 숨김) */}
+      {!viewDeleted && (
       <div className="mb-4 flex gap-2 border-b border-zinc-200">
         <Link
           href={buildHref({ tab: "pending" })}
@@ -312,6 +352,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
           완료
         </Link>
       </div>
+      )}
 
       {/* 검색 + 필터 */}
       <form
@@ -319,8 +360,11 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
         method="get"
         className="mb-6 flex flex-wrap gap-2"
       >
-        {/* tab 유지 (필터 검색 시 현재 탭 보존) */}
-        {tab !== "pending" && <input type="hidden" name="tab" value={tab} />}
+        {/* tab/숨김 보기 유지 (필터 검색 시 현재 보기 보존) */}
+        {tab !== "pending" && !viewDeleted && (
+          <input type="hidden" name="tab" value={tab} />
+        )}
+        {viewDeleted && <input type="hidden" name="deleted" value="1" />}
         <input
           type="text"
           name="q"
@@ -398,7 +442,15 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
           </div>
         )
       ) : (
-        <div>
+        <BulkSelectProvider>
+          {isAdmin && (
+            <BulkBar
+              allIds={invoices.map((i) => i.id)}
+              resource="invoices"
+              viewDeleted={viewDeleted}
+              noun="송장"
+            />
+          )}
           {groupOrder.map((key) => {
             const g = groups.get(key)!;
             const completedCount = g.rows.filter(
@@ -417,29 +469,40 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
                 partialCount={partialCount}
                 defaultOpen={defaultOpen}
               >
-                <InvoiceTable rows={g.rows} tab={tab} />
+                <InvoiceTable rows={g.rows} tab={tab} isAdmin={isAdmin} />
               </InvoiceGroup>
             );
           })}
-        </div>
+        </BulkSelectProvider>
       )}
     </div>
   );
 }
 
-function InvoiceTable({ rows, tab }: { rows: InvoiceRow[]; tab: Tab }) {
+function InvoiceTable({
+  rows,
+  tab,
+  isAdmin,
+}: {
+  rows: InvoiceRow[];
+  tab: Tab;
+  isAdmin: boolean;
+}) {
   return (
     <div>
       {/* 헤더 */}
-      <div className="hidden sm:grid grid-cols-12 gap-3 px-4 py-3 bg-zinc-50 border-b border-zinc-200 text-xs font-medium text-zinc-600">
-        <div className="col-span-3">송장번호</div>
+      <div className="hidden sm:flex items-center gap-3 px-4 py-3 bg-zinc-50 border-b border-zinc-200 text-xs font-medium text-zinc-600">
+        {isAdmin && <span className="w-4 shrink-0" />}
+        <div className="flex-1 grid grid-cols-12 gap-3">
+          <div className="col-span-3">송장번호</div>
         <div className="col-span-2">주문번호</div>
         <div className="col-span-2">수령인</div>
         <div className="col-span-1 text-center">분류</div>
         <div className="col-span-1 text-center">진행</div>
         <div className="col-span-1 text-center">상태</div>
-        <div className="col-span-2 text-center">
-          {tab === "done" ? "완료" : "등록"}
+          <div className="col-span-2 text-center">
+            {tab === "done" ? "완료" : "등록"}
+          </div>
         </div>
       </div>
 
@@ -452,11 +515,19 @@ function InvoiceTable({ rows, tab }: { rows: InvoiceRow[]; tab: Tab }) {
               : "-"
             : formatDateShort(inv.created_at);
         return (
-          <Link
+          <div
             key={inv.id}
-            href={`/warehouse/invoices/${inv.id}`}
-            className="block sm:grid sm:grid-cols-12 gap-3 px-4 py-3 border-b border-zinc-100 last:border-b-0 hover:bg-zinc-50 transition text-sm"
+            className="flex items-center gap-3 px-4 border-b border-zinc-100 last:border-b-0 hover:bg-zinc-50 transition"
           >
+            {isAdmin && (
+              <div className="shrink-0">
+                <BulkCheckbox id={inv.id} />
+              </div>
+            )}
+            <Link
+              href={`/warehouse/invoices/${inv.id}`}
+              className="flex-1 min-w-0 block sm:grid sm:grid-cols-12 gap-3 py-3 text-sm"
+            >
             <div className="sm:col-span-3 font-mono text-zinc-900 truncate">
               {inv.invoice_no}
             </div>
@@ -488,7 +559,8 @@ function InvoiceTable({ rows, tab }: { rows: InvoiceRow[]; tab: Tab }) {
             <div className="sm:col-span-2 sm:text-center text-zinc-500 text-xs">
               {dateText}
             </div>
-          </Link>
+            </Link>
+          </div>
         );
       })}
     </div>

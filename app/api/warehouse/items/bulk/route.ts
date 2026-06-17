@@ -51,7 +51,9 @@ export async function POST(request: Request) {
 
     const result = await withTransaction(async (client) => {
       // 기존 품목: 정규화명 → id 맵 (덮어쓰기 대상 찾기)
-      const existing = await client.query("SELECT id, name FROM items");
+      const existing = await client.query(
+        "SELECT id, name FROM items WHERE deleted_at IS NULL"
+      );
       const idByNormalized = new Map<string, number>();
       const known = new Set<string>();
       for (const r of existing.rows) {

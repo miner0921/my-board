@@ -9,6 +9,11 @@ import NewItemButton from "./NewItemButton";
 import EditItemButton from "./EditItemButton";
 import BulkUploadButton from "./BulkUploadButton";
 import BarcodeTag from "../_components/BarcodeTag";
+import {
+  BulkSelectProvider,
+  BulkBar,
+  BulkCheckbox,
+} from "../_components/BulkSelect";
 
 // 상품명 맨 앞 괄호 = 카테고리. SQL 추출과 동일 의미.
 const CATEGORY_REGEX = "^\\(([^)]+)\\)";
@@ -59,6 +64,7 @@ type PageProps = {
     noimage?: string;
     sort?: string;
     cat?: string;
+    deleted?: string;
   }>;
 };
 
@@ -72,6 +78,7 @@ export default async function ItemListPage({ searchParams }: PageProps) {
     noimage: niParam,
     sort: sortParam,
     cat: catParam,
+    deleted: delParam,
   } = await searchParams;
   const q = (qParam ?? "").trim();
   const noBarcode = nbParam === "1";
@@ -79,12 +86,19 @@ export default async function ItemListPage({ searchParams }: PageProps) {
   const cat = (catParam ?? "").trim();
   const isFiltered = q !== "" || noBarcode || noImage || cat !== "";
 
+  // 숨김 보기/복구는 관리자만
+  const isAdmin =
+    ((session.user as { role?: string }).role ?? "user") === "admin";
+  const viewDeleted = isAdmin && delParam === "1";
+
   // 정렬: 화이트리스트에 없으면 기본(이름순)으로
   const sort = sortParam && SORT_OPTIONS[sortParam] ? sortParam : DEFAULT_SORT;
   const orderBy = SORT_OPTIONS[sort];
 
-  // 동적 WHERE 구성 (검색어 + 바코드없음 + 이미지없음)
-  const conditions: string[] = [];
+  // 동적 WHERE 구성. 숨김 여부 필터를 항상 먼저 적용.
+  const conditions: string[] = [
+    viewDeleted ? "i.deleted_at IS NOT NULL" : "i.deleted_at IS NULL",
+  ];
   const params: unknown[] = [];
   if (q !== "") {
     params.push(`%${q}%`);
@@ -124,7 +138,8 @@ export default async function ItemListPage({ searchParams }: PageProps) {
   const catResult = await query(
     `SELECT DISTINCT substring(name from '${CATEGORY_REGEX}') AS cat
        FROM items
-      WHERE substring(name from '${CATEGORY_REGEX}') IS NOT NULL
+      WHERE deleted_at IS NULL
+        AND substring(name from '${CATEGORY_REGEX}') IS NOT NULL
       ORDER BY cat`
   );
   const categories: string[] = catResult.rows
@@ -136,11 +151,32 @@ export default async function ItemListPage({ searchParams }: PageProps) {
       {/* 액션 바 */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <p className="text-sm text-zinc-500">
-          출고할 품목을 등록하고 관리합니다
+          {viewDeleted
+            ? "숨긴 품목 — 선택해서 복구할 수 있습니다"
+            : "출고할 품목을 등록하고 관리합니다"}
         </p>
         <div className="flex items-center gap-2">
-          <BulkUploadButton />
-          <NewItemButton />
+          {viewDeleted ? (
+            <Link
+              href="/warehouse/items"
+              className="px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition"
+            >
+              ← 활성 품목
+            </Link>
+          ) : (
+            <>
+              {isAdmin && (
+                <Link
+                  href="/warehouse/items?deleted=1"
+                  className="px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition"
+                >
+                  숨긴 항목 보기
+                </Link>
+              )}
+              <BulkUploadButton />
+              <NewItemButton />
+            </>
+          )}
         </div>
       </div>
 
@@ -150,6 +186,7 @@ export default async function ItemListPage({ searchParams }: PageProps) {
         method="get"
         className="mb-6 flex flex-wrap items-center gap-2"
       >
+        {viewDeleted && <input type="hidden" name="deleted" value="1" />}
         <input
           type="text"
           name="q"
@@ -187,7 +224,7 @@ export default async function ItemListPage({ searchParams }: PageProps) {
         </button>
         {isFiltered && (
           <Link
-            href="/warehouse/items"
+            href={viewDeleted ? "/warehouse/items?deleted=1" : "/warehouse/items"}
             className="px-4 py-2 border border-zinc-300 rounded-lg text-sm hover:bg-zinc-50 transition"
           >
             초기화
@@ -211,65 +248,83 @@ export default async function ItemListPage({ searchParams }: PageProps) {
           </div>
         )
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-          {items.map((item) => {
-            const isOwner =
-              session.user?.id === String(item.created_by ?? "");
-            const isAdmin =
-              ((session.user as { role?: string }).role ?? "user") === "admin";
-            // 자동 등록 품목은 누구나 수정 가능 (협업).
-            // 삭제는 Phase 6부터 관리자 전용.
-            const canEdit = item.is_auto_created || isOwner;
-            const canDelete = isAdmin;
-            return (
-              <div
-                key={item.id}
-                className="border border-zinc-200 rounded-lg overflow-hidden bg-white flex flex-col"
-              >
-                {/* 썸네일 (이미지 위) */}
-                <div className="aspect-square bg-zinc-50 border-b border-zinc-100 flex items-center justify-center overflow-hidden">
-                  {item.has_image ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={`/api/warehouse/items/${item.id}/image?v=${new Date(item.updated_at).getTime()}`}
-                      alt={item.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-[11px] text-zinc-300">이미지 없음</span>
-                  )}
-                </div>
-
-                {/* 정보 (아래) */}
-                <div className="p-2 flex-1 flex flex-col">
-                  <h2 className="font-medium text-[11px] sm:text-xs text-zinc-900 line-clamp-2 leading-snug">
-                    {item.name}
-                  </h2>
-                  <div className="mt-1 flex items-center gap-1 flex-wrap">
-                    <BarcodeTag barcode={item.barcode} />
-                    {item.scan_exempt && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] border bg-zinc-100 text-zinc-500 border-zinc-200">
-                        스캔 불필요
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-zinc-400 mt-1 line-clamp-1">
-                    {item.author_nickname ?? "(삭제된 사용자)"} ·{" "}
-                    {formatDate(item.created_at)}
-                  </p>
-
-                  {/* 수정: 자동 등록이면 누구나, 아니면 본인만 / 삭제: 관리자만 */}
-                  {(canEdit || canDelete) && (
-                    <div className="flex gap-1 mt-2">
-                      {canEdit && <EditItemButton itemId={item.id} />}
-                      {canDelete && <DeleteButton itemId={item.id} />}
+        <BulkSelectProvider>
+          {isAdmin && (
+            <BulkBar
+              allIds={items.map((i) => i.id)}
+              resource="items"
+              viewDeleted={viewDeleted}
+              noun="품목"
+            />
+          )}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+            {items.map((item) => {
+              const isOwner =
+                session.user?.id === String(item.created_by ?? "");
+              // 자동 등록 품목은 누구나 수정 가능 (협업).
+              const canEdit = item.is_auto_created || isOwner;
+              return (
+                <div
+                  key={item.id}
+                  className="relative border border-zinc-200 rounded-lg overflow-hidden bg-white flex flex-col"
+                >
+                  {/* 선택 체크박스 (관리자만) */}
+                  {isAdmin && (
+                    <div className="absolute top-1 left-1 z-10 bg-white/90 rounded p-0.5">
+                      <BulkCheckbox id={item.id} />
                     </div>
                   )}
+
+                  {/* 썸네일 (이미지 위) */}
+                  <div className="aspect-square bg-zinc-50 border-b border-zinc-100 flex items-center justify-center overflow-hidden">
+                    {item.has_image ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={`/api/warehouse/items/${item.id}/image?v=${new Date(item.updated_at).getTime()}`}
+                        alt={item.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-[11px] text-zinc-300">이미지 없음</span>
+                    )}
+                  </div>
+
+                  {/* 정보 (아래) */}
+                  <div className="p-2 flex-1 flex flex-col">
+                    <h2 className="font-medium text-[11px] sm:text-xs text-zinc-900 line-clamp-2 leading-snug">
+                      {item.name}
+                    </h2>
+                    <div className="mt-1 flex items-center gap-1 flex-wrap">
+                      <BarcodeTag barcode={item.barcode} />
+                      {item.scan_exempt && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] border bg-zinc-100 text-zinc-500 border-zinc-200">
+                          스캔 불필요
+                        </span>
+                      )}
+                      {viewDeleted && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] border bg-red-50 text-red-600 border-red-200">
+                          숨김
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-zinc-400 mt-1 line-clamp-1">
+                      {item.author_nickname ?? "(삭제된 사용자)"} ·{" "}
+                      {formatDate(item.created_at)}
+                    </p>
+
+                    {/* 활성 보기에서만 수정/삭제 버튼 (숨김 보기는 복구 바로 처리) */}
+                    {!viewDeleted && canEdit && (
+                      <div className="flex gap-1 mt-2">
+                        <EditItemButton itemId={item.id} />
+                        {isAdmin && <DeleteButton itemId={item.id} />}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        </BulkSelectProvider>
       )}
     </div>
   );

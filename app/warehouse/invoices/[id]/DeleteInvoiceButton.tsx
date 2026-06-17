@@ -2,21 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, AlertTriangle } from "lucide-react";
+import { EyeOff, AlertTriangle } from "lucide-react";
 
 type Props = {
   invoiceId: number;
   invoiceNo: string;
 };
 
-// 관리자 전용 송장 삭제 버튼 + 확인 모달.
-// 삭제 시 invoice_items / scan_logs / invoice_reopens / invoices 모두 제거.
-// 되돌릴 수 없는 작업이므로 확인 모달 필수.
-// 사유는 선택 입력 (audit 용도).
+// 관리자 전용 송장 숨김 버튼 + 확인 모달.
+// 완전삭제가 아니라 숨김(soft delete) — 검수 이력(scan_logs) 등은 보존되고
+// "숨긴 항목 보기"에서 복구할 수 있다.
 export default function DeleteInvoiceButton({ invoiceId, invoiceNo }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -42,22 +40,21 @@ export default function DeleteInvoiceButton({ invoiceId, invoiceNo }: Props) {
   const handleClose = () => {
     if (submitting) return;
     setOpen(false);
-    setReason("");
     setError("");
   };
 
-  const handleDelete = async () => {
+  const handleHide = async () => {
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch(`/api/warehouse/invoices/${invoiceId}`, {
-        method: "DELETE",
+      const res = await fetch(`/api/warehouse/invoices/hide`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: reason.trim() }),
+        body: JSON.stringify({ ids: [invoiceId] }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data?.error ?? "삭제에 실패했습니다.");
+        setError(data?.error ?? "숨김에 실패했습니다.");
         setSubmitting(false);
         return;
       }
@@ -76,11 +73,11 @@ export default function DeleteInvoiceButton({ invoiceId, invoiceNo }: Props) {
         onClick={() => setOpen(true)}
         className="flex items-center justify-center gap-1.5 w-full py-3 rounded-lg text-sm font-medium border border-red-300 bg-red-50 text-red-800 hover:bg-red-100 transition"
       >
-        <Trash2 size={16} strokeWidth={1.75} />
-        송장 삭제
+        <EyeOff size={16} strokeWidth={1.75} />
+        송장 삭제(숨김)
       </button>
       <p className="text-[11px] text-zinc-400 text-center mt-2">
-        관리자 전용 · 되돌릴 수 없는 작업입니다
+        관리자 전용 · 목록에서 숨겨지며 복구할 수 있습니다
       </p>
 
       {open && (
@@ -98,14 +95,13 @@ export default function DeleteInvoiceButton({ invoiceId, invoiceNo }: Props) {
               />
               <div className="flex-1">
                 <h2 className="text-lg font-semibold text-zinc-900">
-                  송장 삭제
+                  송장 숨김
                 </h2>
                 <p className="text-sm text-zinc-600 mt-1">
-                  이 송장과 관련된 모든 검수 이력이 함께 삭제됩니다.
+                  이 송장을 목록에서 숨깁니다. 검수 이력은 보존되며,
                   <br />
-                  <span className="text-red-700 font-medium">
-                    되돌릴 수 없습니다.
-                  </span>
+                  관리자가 <span className="font-medium">숨긴 항목 보기</span>에서
+                  복구할 수 있습니다.
                 </p>
               </div>
             </div>
@@ -115,24 +111,6 @@ export default function DeleteInvoiceButton({ invoiceId, invoiceNo }: Props) {
               <p className="text-sm font-mono text-zinc-900 break-all">
                 {invoiceNo}
               </p>
-            </div>
-
-            <div className="mb-4">
-              <label
-                htmlFor="delete-reason"
-                className="block text-xs text-zinc-500 mb-1"
-              >
-                삭제 사유 (선택)
-              </label>
-              <textarea
-                id="delete-reason"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                disabled={submitting}
-                rows={2}
-                placeholder="예: 잘못 업로드된 송장"
-                className="w-full px-3 py-2 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
-              />
             </div>
 
             {error && (
@@ -153,11 +131,11 @@ export default function DeleteInvoiceButton({ invoiceId, invoiceNo }: Props) {
               </button>
               <button
                 type="button"
-                onClick={handleDelete}
+                onClick={handleHide}
                 disabled={submitting}
                 className="flex-1 py-3 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
               >
-                {submitting ? "삭제 중..." : "삭제"}
+                {submitting ? "처리 중..." : "숨김"}
               </button>
             </div>
           </div>

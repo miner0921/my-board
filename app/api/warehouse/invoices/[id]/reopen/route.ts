@@ -60,7 +60,7 @@ export async function POST(request: Request, { params }: RouteContext) {
                 completed_at, completed_by,
                 completion_reason, completion_note
            FROM invoices
-          WHERE id = $1
+          WHERE id = $1 AND deleted_at IS NULL
           FOR UPDATE`,
         [invoiceId]
       );

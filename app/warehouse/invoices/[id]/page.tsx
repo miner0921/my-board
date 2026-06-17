@@ -162,7 +162,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
        LEFT JOIN users uo          ON i.completed_by    = uo.id
        LEFT JOIN invoice_items ii  ON ii.invoice_id     = i.id
        LEFT JOIN items it          ON it.id             = ii.item_id
-       WHERE i.id = $1
+       WHERE i.id = $1 AND i.deleted_at IS NULL
        GROUP BY i.id, uc.nickname, us.nickname, uo.nickname`,
       [id]
     ),

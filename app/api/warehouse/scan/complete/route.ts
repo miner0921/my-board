@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     const result = await withTransaction(async (client) => {
       // 송장 락
       const invRes = await client.query(
-        `SELECT id, invoice_no, status FROM invoices WHERE id = $1 FOR UPDATE`,
+        `SELECT id, invoice_no, status FROM invoices WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
         [invoiceId]
       );
       if (invRes.rows.length === 0) {

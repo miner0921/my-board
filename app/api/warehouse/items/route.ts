@@ -32,10 +32,12 @@ export async function GET(request: Request) {
 
     const result =
       q === ""
-        ? await query(`${baseSelect} ORDER BY i.created_at DESC`)
+        ? await query(
+            `${baseSelect} WHERE i.deleted_at IS NULL ORDER BY i.created_at DESC`
+          )
         : await query(
             `${baseSelect}
-             WHERE i.name ILIKE $1 OR i.barcode ILIKE $1
+             WHERE i.deleted_at IS NULL AND (i.name ILIKE $1 OR i.barcode ILIKE $1)
              ORDER BY i.created_at DESC`,
             [`%${q}%`]
           );

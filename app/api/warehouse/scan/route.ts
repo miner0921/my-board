@@ -63,7 +63,7 @@ export async function POST(request: Request) {
          FROM invoices i
          LEFT JOIN invoice_items ii ON ii.invoice_id = i.id
          LEFT JOIN items it ON it.id = ii.item_id
-        WHERE i.invoice_no = $1
+        WHERE i.invoice_no = $1 AND i.deleted_at IS NULL
         GROUP BY i.id`,
       [barcode]
     );
@@ -91,7 +91,7 @@ export async function POST(request: Request) {
              FROM invoices i
              LEFT JOIN invoice_items ii ON ii.invoice_id = i.id
              LEFT JOIN items it ON it.id = ii.item_id
-            WHERE i.id = $1
+            WHERE i.id = $1 AND i.deleted_at IS NULL
             GROUP BY i.id`,
           [currentInvoiceId]
         );
@@ -686,7 +686,7 @@ async function loadInvoiceFull(invoiceId: number): Promise<{
        FROM invoices i
        LEFT JOIN invoice_items ii ON ii.invoice_id = i.id
        LEFT JOIN items it ON it.id = ii.item_id
-       WHERE i.id = $1
+       WHERE i.id = $1 AND i.deleted_at IS NULL
        GROUP BY i.id`,
       [invoiceId]
     ),

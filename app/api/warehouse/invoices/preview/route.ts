@@ -105,7 +105,9 @@ export async function POST(request: Request) {
     }
 
     // 기존 items 로드 → 정규화 키 맵
-    const existing = await query("SELECT id, name FROM items");
+    const existing = await query(
+      "SELECT id, name FROM items WHERE deleted_at IS NULL"
+    );
     const existingNormalized = new Map<string, number>();
     for (const row of existing.rows) {
       existingNormalized.set(normalizeProductName(row.name), row.id);

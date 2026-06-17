@@ -90,7 +90,9 @@ export async function POST(request: Request) {
     try {
       summary = await withTransaction(async (client) => {
         // 1. 기존 items → 정규화 키 맵
-        const existing = await client.query("SELECT id, name FROM items");
+        const existing = await client.query(
+          "SELECT id, name FROM items WHERE deleted_at IS NULL"
+        );
         const itemByNormalized = new Map<string, number>();
         for (const row of existing.rows) {
           itemByNormalized.set(normalizeProductName(row.name), row.id);
