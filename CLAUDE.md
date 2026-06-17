@@ -1,8 +1,8 @@
-# my-board: 게시판 + 출고 바코드 검수 시스템
+# my-board: 출고 바코드 검수 시스템
 
-이 프로젝트는 두 개의 기능을 가집니다:
-1. **게시판** (기존 완성, 배포됨) - 메인 페이지(/)
-2. **출고 바코드 검수 시스템** (개발 중) - 헤더의 "바코드 관리" 메뉴
+발주서/송장 파일을 업로드해 출고 품목을 바코드로 검수하는 시스템.
+메인 페이지(/)는 출고 대시보드(/warehouse)로 리다이렉트된다.
+(과거 함께 있던 게시판 기능은 제거됨 — posts/comments 코드 삭제 완료.)
 
 ## 기술 스택
 - Next.js 15 (App Router)
@@ -20,8 +20,8 @@
 ## 기존 인프라 (재사용)
 - 인증: NextAuth + Credentials Provider (auth.ts, auth.config.ts)
 - DB 연결: lib/db.ts의 query 함수 (Neon SSL 자동 처리)
-- 미들웨어: middleware.ts
-- 헤더: app/components/Header.tsx
+- 미들웨어: proxy.ts
+- 셸 UI(사이드바): app/components/AppShell.tsx + Sidebar.tsx
 - 세션 타입: types/next-auth.d.ts
 
 ## 출고 시스템 도메인 개념
@@ -34,7 +34,7 @@
 ## 사용자 권한
 - 모든 사용자가 로그인만 하면 모든 기능 사용 가능
 - 권한 분리(admin/worker) 없음
-- 기본 원칙: 본인이 등록한 품목/송장만 수정/삭제 가능 (게시판처럼)
+- 기본 원칙: 본인이 등록한 품목/송장만 수정/삭제 가능
 
 ### 품목(items) 수정/삭제 권한
 협업 시나리오를 위해 `items.is_auto_created` 플래그로 정책을 분기:
@@ -52,10 +52,9 @@
 ## 페이지 구조
 | 경로 | 용도 | 비고 |
 |---|---|---|
-| / | 게시판 메인 | 기존 유지, 절대 변경 금지 |
-| /posts/* | 게시판 페이지들 | 기존 유지, 절대 변경 금지 |
-| /signup, /login | 회원가입/로그인 | 기존 유지 |
-| /warehouse | 출고시스템 대시보드 (메뉴) | 신규 |
+| / | /warehouse로 리다이렉트 | app/page.tsx |
+| /login | 로그인 | |
+| /warehouse | 출고시스템 대시보드 (메인 랜딩) | |
 | /warehouse/items | 품목 목록/등록/수정/삭제 | 신규 |
 | /warehouse/items/bulk | CSV 대량 등록 | 신규 |
 | /warehouse/invoices | 송장 목록/등록 | 신규 |
@@ -64,15 +63,16 @@
 | /warehouse/history | 검수 이력 | 신규 |
 
 ## API 라우트 구조
-- 게시판 API: /api/posts/*, /api/signup, /api/auth/* (기존 유지)
+- 공용 API: /api/signup, /api/auth/*, /api/profile/*, /api/admin/*
 - 출고 API: /api/warehouse/items/*, /api/warehouse/invoices/*, /api/warehouse/scan, /api/warehouse/history
 
 ## DB 스키마
 
-### 기존 (변경 금지)
-- users (id, username, password, nickname, created_at)
-- posts (id, title, content, user_id, barcode, created_at, updated_at)
-- comments (id, post_id, user_id, content, created_at)
+### 공용 (인증/사용자)
+- users (id, username, password, nickname, created_at) — 인증·작업자 정보로 계속 사용
+
+### 미사용 (게시판 제거로 코드는 삭제됨 — 테이블은 DROP 안 함)
+- posts, comments — 더 이상 어떤 코드도 참조하지 않음. 정리하려면 별도 migration 필요.
 
 ### 신규 (출고 시스템용)
 
@@ -128,7 +128,7 @@ CREATE INDEX idx_scan_logs_invoice ON scan_logs(invoice_id);
 ```
 
 ## 이미지 저장 방식
-**DB의 BYTEA 컬럼에 직접 저장** (게시판과 동일 방식, Vercel/Neon 양쪽 호환)
+**DB의 BYTEA 컬럼에 직접 저장** (Cloud Run/Cloud SQL 호환, 파일시스템 쓰기 불필요)
 - `items` 테이블에 `image_data BYTEA` + `image_mime VARCHAR(100)` 두 컬럼 사용
 - `multipart/form-data`로 업로드 받아 `Buffer`로 변환 후 INSERT
 - 검증은 `lib/upload.ts`의 `readUploadedImage()` 재사용
@@ -158,9 +158,9 @@ CREATE INDEX idx_scan_logs_invoice ON scan_logs(invoice_id);
 - 날짜 포맷: YYYY-MM-DD HH:mm
 
 ## 작업 시 주의사항
-1. **기존 게시판 코드는 절대 수정 금지**
-   - app/page.tsx, app/posts/*, app/api/posts/*, app/api/signup
-   - 헤더(app/components/Header.tsx)는 메뉴 추가만 OK, 기존 메뉴는 유지
+1. **공용 인프라는 신중히 변경**
+   - lib/db.ts, auth.ts, auth.config.ts, proxy.ts는 전 구간 공용 — 변경 시 영향 범위 확인
+   - 셸 UI(AppShell/Sidebar)는 /warehouse·/admin·/profile 공통
 
 2. **출고 시스템은 /warehouse 경로로 모두 격리**
    - 페이지: app/warehouse/*
@@ -183,7 +183,9 @@ CREATE INDEX idx_scan_logs_invoice ON scan_logs(invoice_id);
 
 ```
 app/
-├── (기존 게시판 파일들 - 그대로 유지)
+├── page.tsx (/ → /warehouse 리다이렉트)
+├── layout.tsx, login/, signup/, profile/, admin/
+├── components/ (AppShell.tsx, Sidebar.tsx)
 ├── warehouse/
 │   ├── page.tsx (대시보드)
 │   ├── items/
@@ -201,7 +203,7 @@ app/
 │   └── history/
 │       └── page.tsx
 └── api/
-    ├── (기존 게시판 API들 - 그대로 유지)
+    ├── auth/, signup/, profile/, admin/, login-status/
     └── warehouse/
         ├── items/route.ts
         ├── items/[id]/route.ts

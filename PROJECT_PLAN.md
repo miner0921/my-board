@@ -3,7 +3,7 @@
 ## Phase 1: 기반 설정
 - [ ] DB 스키마 SQL 파일 작성 (migrations/001_warehouse_schema.sql)
 - [ ] 사용자가 Neon SQL Editor에서 실행
-- [ ] 헤더에 "바코드 관리" 메뉴 추가 (게시판 메뉴는 유지)
+- [ ] 사이드바 셸 + 대시보드 진입 메뉴
 - [ ] /warehouse 대시보드 페이지 (간단한 카드 메뉴)
 
 ## Phase 2: 품목 관리

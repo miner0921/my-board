@@ -27,7 +27,6 @@ const pool = new Pool({
 });
 
 // 쿼리를 쉽게 실행할 수 있는 헬퍼 함수
-// 예: query("SELECT * FROM posts WHERE id = $1", [1])
 export async function query(text: string, params?: unknown[]) {
   const result = await pool.query(text, params);
   return result;

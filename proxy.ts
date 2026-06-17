@@ -4,14 +4,6 @@ import authConfig from "./auth.config";
 
 const { auth } = NextAuth(authConfig);
 
-// ──────────────────────────────────────
-// 게시판 관련 보호 경로
-// ──────────────────────────────────────
-const POSTS_PROTECTED = [
-  /^\/posts\/new$/,
-  /^\/posts\/\d+\/edit$/,
-];
-
 // 로그인 상태에서 가면 안 되는 경로 (이미 로그인했는데 로그인 페이지 가는 등)
 const AUTH_ROUTES = [
   /^\/login$/,
@@ -96,21 +88,13 @@ export const proxy = auth((req) => {
     return NextResponse.redirect(new URL("/warehouse", req.nextUrl.origin));
   }
 
-  // 3) 게시판 보호 경로
-  const isPostsProtected = POSTS_PROTECTED.some((p) => p.test(pathname));
-  if (isPostsProtected && !isLoggedIn) {
-    const loginUrl = new URL("/login", req.nextUrl.origin);
-    loginUrl.searchParams.set("from", pathname);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  // 4) 이미 로그인했는데 /login 또는 /signup → 메인
+  // 3) 이미 로그인했는데 /login 또는 /signup → 대시보드
   const isAuthRoute = AUTH_ROUTES.some((p) => p.test(pathname));
   if (isAuthRoute && isLoggedIn) {
-    return NextResponse.redirect(new URL("/", req.nextUrl.origin));
+    return NextResponse.redirect(new URL("/warehouse", req.nextUrl.origin));
   }
 
-  // 5) must_change_password=true: 비번 변경 화면 외 모두 차단
+  // 4) must_change_password=true: 비번 변경 화면 외 모두 차단
   if (isLoggedIn && mustChange) {
     const allowed = MUST_CHANGE_ALLOWED.some((p) => p.test(pathname));
     if (!allowed) {
