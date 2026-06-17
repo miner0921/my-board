@@ -1,8 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useState } from "react";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -11,6 +9,12 @@ import {
   Check,
   X,
 } from "lucide-react";
+
+// ─────────────────────────────────────────────────────────────
+// 발주서/송장 업로드 패널 (분석 → 미리보기 → 등록 확정).
+//   - 기존 /warehouse/upload 페이지 로직을 그대로 옮겨 모달에서 재사용.
+//   - 성공 시 onSuccess() 호출 (부모가 모달 닫고 목록/이력 갱신).
+// ─────────────────────────────────────────────────────────────
 
 type PreviewItem = {
   rawName: string;
@@ -63,10 +67,7 @@ type PreviewData = {
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
-export default function UploadPage() {
-  const router = useRouter();
-  const { status } = useSession();
-
+export default function UploadPanel({ onSuccess }: { onSuccess: () => void }) {
   const [orderFile, setOrderFile] = useState<File | null>(null);
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewData | null>(null);
@@ -75,13 +76,6 @@ export default function UploadPage() {
   const [error, setError] = useState("");
   const [showMatchedDetail, setShowMatchedDetail] = useState(false);
   const [showNewItems, setShowNewItems] = useState(false);
-
-  useEffect(() => {
-    if (status === "unauthenticated") {
-      alert("로그인이 필요합니다.");
-      router.push("/login");
-    }
-  }, [status, router]);
 
   function validateAndSet(
     e: React.ChangeEvent<HTMLInputElement>,
@@ -163,8 +157,7 @@ export default function UploadPage() {
           `- 등록 송장: ${s.insertedInvoices}건\n` +
           `- 중복 SKIP: ${s.skippedInvoices}건`
       );
-      router.push("/warehouse/invoices");
-      router.refresh();
+      onSuccess();
     } catch (err) {
       console.error(err);
       setError("네트워크 오류가 발생했습니다.");
@@ -181,19 +174,15 @@ export default function UploadPage() {
 
   const canAnalyze = !!orderFile && !!invoiceFile && !analyzing && !confirming;
 
-  if (status === "loading") {
-    return <div className="text-zinc-500">로딩 중...</div>;
-  }
-
   return (
-    <div className="max-w-4xl">
-      <p className="text-sm text-zinc-500 mb-6">
-        발주서(.xlsx)와 송장(.xlsx) 파일을 모두 올린 뒤 분석하기를 눌러주세요.
-        분석 결과를 확인하고 등록 확정을 누르면 저장됩니다.
+    <div>
+      <p className="text-sm text-zinc-500 mb-4">
+        발주서(.xlsx)와 송장(.xlsx)을 모두 올린 뒤 분석하기를 누르세요. 분석
+        결과를 확인하고 등록 확정을 누르면 저장됩니다.
       </p>
 
       {/* 두 드롭존 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
         <FileBox
           label="1. 발주서 (.xlsx)"
           file={orderFile}
@@ -225,7 +214,7 @@ export default function UploadPage() {
       )}
 
       {!preview && (
-        <div className="flex justify-center mb-6">
+        <div className="flex justify-center mb-2">
           <button
             onClick={handleAnalyze}
             disabled={!canAnalyze}
@@ -238,19 +227,23 @@ export default function UploadPage() {
 
       {preview && (
         <section className="border border-zinc-200 rounded-lg p-5 bg-white">
-          <h2 className="text-lg font-semibold mb-3">분석 결과</h2>
+          <h3 className="text-base font-semibold mb-3">분석 결과</h3>
 
           {/* 시트별 발주서 건수 */}
           <p className="text-xs text-zinc-500 mb-4">
-            발주서 시트별: 사업자 {preview.summary.sheetCounts.business}건 · 개인일반{" "}
-            {preview.summary.sheetCounts.individual}건 · 개인소매{" "}
+            발주서 시트별: 사업자 {preview.summary.sheetCounts.business}건 ·
+            개인일반 {preview.summary.sheetCounts.individual}건 · 개인소매{" "}
             {preview.summary.sheetCounts.retail}건
           </p>
 
           {/* 요약 */}
           <ul className="space-y-2 text-sm">
             <li className="flex items-center gap-2">
-              <CheckCircle2 size={16} strokeWidth={1.75} className="text-green-600 shrink-0" />
+              <CheckCircle2
+                size={16}
+                strokeWidth={1.75}
+                className="text-green-600 shrink-0"
+              />
               <span>
                 매칭된 송장:{" "}
                 <span className="font-semibold">
@@ -270,7 +263,11 @@ export default function UploadPage() {
 
             {preview.summary.onlyInOrderCount > 0 && (
               <li className="flex items-center gap-2">
-                <AlertTriangle size={16} strokeWidth={1.75} className="text-amber-500 shrink-0" />
+                <AlertTriangle
+                  size={16}
+                  strokeWidth={1.75}
+                  className="text-amber-500 shrink-0"
+                />
                 <span>
                   발주서에만 있음:{" "}
                   <span className="font-semibold">
@@ -286,7 +283,11 @@ export default function UploadPage() {
 
             {preview.summary.onlyInInvoiceCount > 0 && (
               <li className="flex items-center gap-2">
-                <AlertTriangle size={16} strokeWidth={1.75} className="text-amber-500 shrink-0" />
+                <AlertTriangle
+                  size={16}
+                  strokeWidth={1.75}
+                  className="text-amber-500 shrink-0"
+                />
                 <span>
                   송장에만 있음:{" "}
                   <span className="font-semibold">
@@ -321,7 +322,11 @@ export default function UploadPage() {
 
             {preview.summary.totalNotes > 0 && (
               <li className="flex items-center gap-2">
-                <StickyNote size={16} strokeWidth={1.75} className="text-zinc-500 shrink-0" />
+                <StickyNote
+                  size={16}
+                  strokeWidth={1.75}
+                  className="text-zinc-500 shrink-0"
+                />
                 <span>
                   메모 처리될 안내문:{" "}
                   <span className="font-semibold">
@@ -349,7 +354,7 @@ export default function UploadPage() {
 
           {/* 매칭 송장 상세 */}
           {showMatchedDetail && (
-            <div className="mt-4 max-h-[420px] overflow-auto border border-zinc-200 rounded">
+            <div className="mt-4 max-h-[360px] overflow-auto border border-zinc-200 rounded">
               {preview.matched.map((m) => (
                 <div
                   key={m.invoiceNo}
@@ -368,10 +373,7 @@ export default function UploadPage() {
                       <li key={i}>
                         · {it.rawName}
                         {it.rawName !== it.normalizedName && (
-                          <span className="text-zinc-400">
-                            {" "}
-                            → {it.normalizedName}
-                          </span>
+                          <span className="text-zinc-400"> → {it.normalizedName}</span>
                         )}
                         <span className="text-zinc-500"> ×{it.qty}</span>
                         {it.isNew && (
@@ -432,18 +434,13 @@ export default function UploadPage() {
                     [발주서에만 있음 — 송장 미발급, 등록되지 않음]
                   </div>
                   {preview.onlyInOrder.map((o, i) => (
-                    <div
-                      key={i}
-                      className="p-3 border-b border-zinc-100 text-xs"
-                    >
+                    <div key={i} className="p-3 border-b border-zinc-100 text-xs">
                       <span className="text-zinc-500 font-mono">{o.orderNo}</span>
                       <span className="ml-2 text-zinc-700">{o.recipientName}</span>
                       {o.customerType && (
                         <span className="ml-2 text-zinc-400">[{o.customerType}]</span>
                       )}
-                      <div className="ml-4 text-zinc-500 mt-1">
-                        {o.productNameRaw}
-                      </div>
+                      <div className="ml-4 text-zinc-500 mt-1">{o.productNameRaw}</div>
                     </div>
                   ))}
                 </>

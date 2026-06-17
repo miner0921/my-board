@@ -183,6 +183,22 @@ export async function POST(request: Request) {
           }
         }
 
+        // 업로드 이력 기록 (파일명 + 집계). 같은 트랜잭션이라 등록과 원자적.
+        await client.query(
+          `INSERT INTO invoice_uploads
+             (order_filename, invoice_filename,
+              inserted_items, inserted_invoices, skipped_invoices, uploaded_by)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            orderFile.name,
+            invoiceFile.name,
+            insertedItems,
+            insertedInvoices,
+            skippedInvoices,
+            userId,
+          ]
+        );
+
         return { insertedItems, insertedInvoices, skippedInvoices };
       });
     } catch (e) {

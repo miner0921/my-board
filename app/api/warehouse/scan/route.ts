@@ -234,12 +234,14 @@ export async function POST(request: Request) {
         return true;
       };
 
-      // 품목 행 락
+      // 품목 행 락 (+ 바코드/이름 — 송장 기반 바코드 매칭에 사용)
       const rowsRes = await client.query(
-        `SELECT ii.id AS invoice_item_id, ii.item_id, ii.quantity, ii.scanned_count
+        `SELECT ii.id AS invoice_item_id, ii.item_id, ii.quantity, ii.scanned_count,
+                it.name AS item_name, it.barcode AS item_barcode
            FROM invoice_items ii
+           JOIN items it ON it.id = ii.item_id
           WHERE ii.invoice_id = $1
-          FOR UPDATE`,
+          FOR UPDATE OF ii`,
         [currentInvoiceId]
       );
       const rows: Array<{
@@ -247,9 +249,16 @@ export async function POST(request: Request) {
         item_id: number;
         quantity: number;
         scanned_count: number;
+        item_name: string;
+        item_barcode: string | null;
       }> = rowsRes.rows;
 
-      const target = rows.find((r) => r.item_id === matchedItem.id);
+      // 송장 기반 매칭: 스캔한 바코드를 "현재 송장 품목" 중에서 찾는다.
+      // 같은 바코드 품목이 여럿이면 아직 안 찍힌 것(scanned_count < quantity) 우선,
+      // 모두 다 찍혔으면 그 중 첫 번째(초과 확인 흐름으로).
+      const candidates = rows.filter((r) => r.item_barcode === barcode);
+      const target =
+        candidates.find((r) => r.scanned_count < r.quantity) ?? candidates[0];
 
       // 송장에 없는 품목
       if (!target) {
@@ -382,7 +391,7 @@ export async function POST(request: Request) {
           item: {
             invoice_item_id: target.invoice_item_id,
             item_id: target.item_id,
-            name: matchedItem.name as string,
+            name: target.item_name,
             quantity: target.quantity,
             scanned_count: target.scanned_count, // 변경 전 값
           },
@@ -413,7 +422,7 @@ export async function POST(request: Request) {
          VALUES ($1, $2, $3, false, $4)`,
         [
           currentInvoiceId,
-          matchedItem.id,
+          target.item_id,
           userId,
           willBeOver ? "over_quantity_forced" : null,
         ]
@@ -464,7 +473,7 @@ export async function POST(request: Request) {
         item: {
           invoice_item_id: target.invoice_item_id,
           item_id: target.item_id,
-          name: matchedItem.name as string,
+          name: target.item_name,
           quantity: target.quantity,
           scanned_count: nextCount,
         },

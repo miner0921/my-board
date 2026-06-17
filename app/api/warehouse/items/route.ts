@@ -107,42 +107,27 @@ export async function POST(request: Request) {
       imageMime = parsed.mime;
     }
 
-    try {
-      const result = await query(
-        `INSERT INTO items (barcode, name, image_data, image_mime, created_by)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, barcode, name, created_by, created_at,
-                   (image_data IS NOT NULL) AS has_image`,
-        [barcode, name, imageBuffer, imageMime, session.user.id]
-      );
+    // 바코드는 중복 허용 (016에서 UNIQUE 제약 해제) — 같은 바코드 품목 여럿 OK.
+    const result = await query(
+      `INSERT INTO items (barcode, name, image_data, image_mime, created_by)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, barcode, name, created_by, created_at,
+                 (image_data IS NOT NULL) AS has_image`,
+      [barcode, name, imageBuffer, imageMime, session.user.id]
+    );
 
-      await logAccess({
-        session,
-        action: "item.create",
-        targetType: "item",
-        targetId: result.rows[0].id,
-        request,
-      });
+    await logAccess({
+      session,
+      action: "item.create",
+      targetType: "item",
+      targetId: result.rows[0].id,
+      request,
+    });
 
-      return NextResponse.json(
-        { item: result.rows[0], message: "품목 등록 성공!" },
-        { status: 201 }
-      );
-    } catch (e: unknown) {
-      // PostgreSQL unique_violation (barcode UNIQUE — NULL 끼리는 충돌 안 함)
-      if (
-        typeof e === "object" &&
-        e !== null &&
-        "code" in e &&
-        (e as { code?: string }).code === "23505"
-      ) {
-        return NextResponse.json(
-          { error: "이미 등록된 바코드입니다." },
-          { status: 409 }
-        );
-      }
-      throw e;
-    }
+    return NextResponse.json(
+      { item: result.rows[0], message: "품목 등록 성공!" },
+      { status: 201 }
+    );
   } catch (error) {
     console.error("품목 등록 에러:", error);
     return NextResponse.json(

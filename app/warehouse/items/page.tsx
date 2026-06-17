@@ -2,9 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { query } from "@/lib/db";
-import { Plus, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import DeleteButton from "./DeleteButton";
 import SortSelect from "./SortSelect";
+import NewItemButton from "./NewItemButton";
+import EditItemButton from "./EditItemButton";
 import BarcodeTag from "../_components/BarcodeTag";
 
 // 정렬 옵션 화이트리스트. key는 SortSelect의 <option value>와 일치.
@@ -116,13 +118,7 @@ export default async function ItemListPage({ searchParams }: PageProps) {
             <Upload size={16} strokeWidth={1.75} />
             CSV 대량 등록
           </Link>
-          <Link
-            href="/warehouse/items/new"
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition font-medium"
-          >
-            <Plus size={16} strokeWidth={2} />
-            새 품목 등록
-          </Link>
+          <NewItemButton />
         </div>
       </div>
 
@@ -186,14 +182,9 @@ export default async function ItemListPage({ searchParams }: PageProps) {
             </p>
           </div>
         ) : (
-          <div className="text-center py-16 border border-dashed border-zinc-300 rounded-lg">
+          <div className="flex flex-col items-center py-16 border border-dashed border-zinc-300 rounded-lg">
             <p className="text-zinc-500 mb-3">아직 등록된 품목이 없습니다.</p>
-            <Link
-              href="/warehouse/items/new"
-              className="inline-block px-4 py-2 bg-zinc-900 text-white rounded-lg text-sm font-medium hover:bg-zinc-800 transition"
-            >
-              첫 품목을 등록해보세요
-            </Link>
+            <NewItemButton />
           </div>
         )
       ) : (
@@ -242,14 +233,7 @@ export default async function ItemListPage({ searchParams }: PageProps) {
                   {/* 수정: 자동 등록이면 누구나, 아니면 본인만 / 삭제: 관리자만 */}
                   {(canEdit || canDelete) && (
                     <div className="flex gap-1 mt-2">
-                      {canEdit && (
-                        <Link
-                          href={`/warehouse/items/${item.id}/edit`}
-                          className="flex-1 text-center px-2 py-1 text-[11px] border border-zinc-300 rounded hover:bg-zinc-50 transition"
-                        >
-                          수정
-                        </Link>
-                      )}
+                      {canEdit && <EditItemButton itemId={item.id} />}
                       {canDelete && <DeleteButton itemId={item.id} />}
                     </div>
                   )}

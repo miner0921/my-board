@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { query } from "@/lib/db";
 import { Upload } from "lucide-react";
 import InvoiceGroup from "./InvoiceGroup";
+import UploadButton from "./UploadButton";
 
 type InvoiceRow = {
   id: number;
@@ -281,13 +282,10 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
         <p className="text-sm text-zinc-500">
           발주서와 송장 파일을 업로드하면 자동으로 등록됩니다
         </p>
-        <Link
-          href="/warehouse/upload"
-          className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition font-medium self-start sm:self-auto"
-        >
+        <UploadButton className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition font-medium self-start sm:self-auto">
           <Upload size={16} strokeWidth={1.75} />
           발주서 및 송장 업로드
-        </Link>
+        </UploadButton>
       </div>
 
       {/* 상태 탭 */}
@@ -392,13 +390,10 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
             <p className="text-xs text-zinc-400 mb-6">
               새 송장을 업로드하거나, 완료된 송장은 검수 이력에서 확인하세요.
             </p>
-            <Link
-              href="/warehouse/upload"
-              className="inline-flex items-center gap-1.5 px-6 py-3 bg-zinc-900 text-white rounded-lg text-sm font-medium hover:bg-zinc-800 transition"
-            >
+            <UploadButton className="inline-flex items-center gap-1.5 px-6 py-3 bg-zinc-900 text-white rounded-lg text-sm font-medium hover:bg-zinc-800 transition">
               <Upload size={16} strokeWidth={1.75} />
               발주서 및 송장 업로드
-            </Link>
+            </UploadButton>
           </div>
         )
       ) : (

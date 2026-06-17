@@ -139,41 +139,27 @@ export async function PUT(request: Request, { params }: RouteContext) {
       imageParams = [];
     }
 
-    try {
-      const result = await query(
-        `UPDATE items
-         SET barcode = $1, name = $2,
-             updated_at = CURRENT_TIMESTAMP
-             ${imageSql}
-         WHERE id = $3
-         RETURNING id, barcode, name, updated_at,
-                   (image_data IS NOT NULL) AS has_image`,
-        [barcode, name, id, ...imageParams]
-      );
+    // 바코드는 중복 허용 (016에서 UNIQUE 제약 해제).
+    const result = await query(
+      `UPDATE items
+       SET barcode = $1, name = $2,
+           updated_at = CURRENT_TIMESTAMP
+           ${imageSql}
+       WHERE id = $3
+       RETURNING id, barcode, name, updated_at,
+                 (image_data IS NOT NULL) AS has_image`,
+      [barcode, name, id, ...imageParams]
+    );
 
-      await logAccess({
-        session,
-        action: "item.update",
-        targetType: "item",
-        targetId: id,
-        request,
-      });
+    await logAccess({
+      session,
+      action: "item.update",
+      targetType: "item",
+      targetId: id,
+      request,
+    });
 
-      return NextResponse.json({ item: result.rows[0], message: "수정 완료!" });
-    } catch (e: unknown) {
-      if (
-        typeof e === "object" &&
-        e !== null &&
-        "code" in e &&
-        (e as { code?: string }).code === "23505"
-      ) {
-        return NextResponse.json(
-          { error: "이미 등록된 바코드입니다." },
-          { status: 409 }
-        );
-      }
-      throw e;
-    }
+    return NextResponse.json({ item: result.rows[0], message: "수정 완료!" });
   } catch (error) {
     console.error("품목 수정 에러:", error);
     return NextResponse.json(
