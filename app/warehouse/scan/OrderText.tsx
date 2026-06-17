@@ -9,6 +9,7 @@ type OrderTextItem = {
   name: string;
   quantity: number;
   scanned_count: number;
+  scan_exempt?: boolean;
 };
 
 export default function OrderText({ items }: { items: OrderTextItem[] }) {
@@ -19,8 +20,20 @@ export default function OrderText({ items }: { items: OrderTextItem[] }) {
       <p className="text-[11px] text-zinc-500 mb-1.5">전체 상품</p>
       <p className="text-sm leading-relaxed">
         {items.map((it, i) => {
-          const complete = it.scanned_count >= it.quantity && it.quantity > 0;
           const label = it.display_name?.trim() || it.name;
+          // 스캔 불필요 품목: 취소선/카운트 없이 회색 안내(챙기되 안 찍음)
+          if (it.scan_exempt) {
+            return (
+              <span key={it.invoice_item_id}>
+                {i > 0 && <span className="text-zinc-300 mx-1">/</span>}
+                <span className="text-zinc-400">
+                  {label}
+                  <span className="text-[11px]"> (스캔 불필요)</span>
+                </span>
+              </span>
+            );
+          }
+          const complete = it.scanned_count >= it.quantity && it.quantity > 0;
           const partial = !complete && it.scanned_count > 0;
           return (
             <span key={it.invoice_item_id}>

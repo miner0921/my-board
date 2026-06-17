@@ -15,6 +15,7 @@ type ScanItemCardData = {
   hasImage: boolean;
   updatedAt: string;
   isAddedOnScan: boolean;
+  scanExempt?: boolean;
 };
 
 export default function ScanItemCard({
@@ -25,11 +26,14 @@ export default function ScanItemCard({
   highlighted?: boolean;
 }) {
   const { quantity, scannedCount } = item;
-  const complete = scannedCount >= quantity && quantity > 0;
-  const over = scannedCount > quantity && quantity > 0;
-  const notStarted = scannedCount === 0;
+  const exempt = !!item.scanExempt;
+  const complete = !exempt && scannedCount >= quantity && quantity > 0;
+  const over = !exempt && scannedCount > quantity && quantity > 0;
+  const notStarted = !exempt && scannedCount === 0;
 
-  const borderClass = over
+  const borderClass = exempt
+    ? "border-zinc-200 border-dashed"
+    : over
     ? "border-red-400 ring-2 ring-red-200"
     : complete
       ? "border-green-400 bg-green-50"
@@ -43,18 +47,20 @@ export default function ScanItemCard({
         notStarted && !over ? "opacity-60" : ""
       } ${highlighted ? "shadow-md scale-[1.02]" : ""}`}
     >
-      {/* 완료 ✓ / 미완료 ○ */}
-      <div className="absolute top-1 right-1 z-10">
-        {complete ? (
-          <CheckCircle2
-            size={18}
-            strokeWidth={2}
-            className="text-green-600 drop-shadow-sm"
-          />
-        ) : (
-          <Circle size={18} strokeWidth={2} className="text-zinc-300" />
-        )}
-      </div>
+      {/* 완료 ✓ / 미완료 ○ (스캔 불필요는 아이콘 없음) */}
+      {!exempt && (
+        <div className="absolute top-1 right-1 z-10">
+          {complete ? (
+            <CheckCircle2
+              size={18}
+              strokeWidth={2}
+              className="text-green-600 drop-shadow-sm"
+            />
+          ) : (
+            <Circle size={18} strokeWidth={2} className="text-zinc-300" />
+          )}
+        </div>
+      )}
 
       {/* 이미지 */}
       <div className="aspect-square bg-zinc-50 border-b border-zinc-100 flex items-center justify-center overflow-hidden">
@@ -76,25 +82,33 @@ export default function ScanItemCard({
           {item.name}
         </h3>
         <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-          <span className="text-[11px] text-zinc-500">×{quantity}</span>
-          <span
-            className={`px-1.5 py-0.5 rounded text-[11px] font-semibold border ${
-              over
-                ? "bg-red-50 text-red-700 border-red-200"
-                : complete
-                  ? "bg-green-50 text-green-700 border-green-200"
-                  : "bg-zinc-50 text-zinc-600 border-zinc-200"
-            }`}
-          >
-            {scannedCount}/{quantity}
-          </span>
-          {item.isAddedOnScan && (
-            <span className="px-1 py-0.5 rounded text-[11px] border bg-amber-50 text-amber-700 border-amber-200">
-              현장
+          {exempt ? (
+            <span className="px-1.5 py-0.5 rounded text-[11px] border bg-zinc-100 text-zinc-500 border-zinc-200">
+              스캔 불필요
             </span>
+          ) : (
+            <>
+              <span className="text-[11px] text-zinc-500">×{quantity}</span>
+              <span
+                className={`px-1.5 py-0.5 rounded text-[11px] font-semibold border ${
+                  over
+                    ? "bg-red-50 text-red-700 border-red-200"
+                    : complete
+                      ? "bg-green-50 text-green-700 border-green-200"
+                      : "bg-zinc-50 text-zinc-600 border-zinc-200"
+                }`}
+              >
+                {scannedCount}/{quantity}
+              </span>
+              {item.isAddedOnScan && (
+                <span className="px-1 py-0.5 rounded text-[11px] border bg-amber-50 text-amber-700 border-amber-200">
+                  현장
+                </span>
+              )}
+            </>
           )}
         </div>
-        {!item.barcode && (
+        {!exempt && !item.barcode && (
           <span className="mt-1 inline-block w-fit px-1 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[11px]">
             바코드 미등록
           </span>

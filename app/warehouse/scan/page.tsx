@@ -49,6 +49,7 @@ type ItemPayload = {
   has_image: boolean;
   updated_at: string;
   is_added_on_scan?: boolean;
+  scan_exempt?: boolean;
 };
 
 type FlashKind = "ok" | "error" | "complete" | "partial" | null;
@@ -222,6 +223,7 @@ export default function ScanPage() {
           has_image: false,
           updated_at: new Date().toISOString(),
           is_added_on_scan: true,
+          scan_exempt: false,
           ...item,
         } as ItemPayload,
       ];
@@ -868,6 +870,7 @@ export default function ScanPage() {
                   hasImage: it.has_image,
                   updatedAt: it.updated_at,
                   isAddedOnScan: it.is_added_on_scan === true,
+                  scanExempt: it.scan_exempt === true,
                 }}
                 highlighted={lastScannedId === it.invoice_item_id}
               />

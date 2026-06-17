@@ -80,6 +80,7 @@ type InvoiceItem = {
   has_image: boolean;
   updated_at: string;
   is_added_on_scan: boolean;
+  scan_exempt: boolean;
 };
 
 // 항상 한국시간(Asia/Seoul)으로 표시. 서버 컴포넌트라 실행 환경 TZ(UTC)에
@@ -153,13 +154,14 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
          uc.nickname AS created_by_name,
          us.nickname AS scan_started_by_name,
          uo.nickname AS completed_by_name,
-         COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
-         COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
+         COALESCE(SUM(ii.quantity) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int      AS total_qty,
+         COALESCE(SUM(ii.scanned_count) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int AS scanned_qty
        FROM invoices i
        LEFT JOIN users uc          ON i.created_by      = uc.id
        LEFT JOIN users us          ON i.scan_started_by = us.id
        LEFT JOIN users uo          ON i.completed_by    = uo.id
        LEFT JOIN invoice_items ii  ON ii.invoice_id     = i.id
+       LEFT JOIN items it          ON it.id             = ii.item_id
        WHERE i.id = $1
        GROUP BY i.id, uc.nickname, us.nickname, uo.nickname`,
       [id]
@@ -170,7 +172,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
          ii.id AS invoice_item_id,
          ii.item_id, ii.quantity, ii.scanned_count, ii.display_name,
          ii.is_added_on_scan,
-         it.name, it.barcode, it.updated_at,
+         it.name, it.barcode, it.updated_at, it.scan_exempt,
          (it.image_data IS NOT NULL) AS has_image
        FROM invoice_items ii
        JOIN items it ON it.id = ii.item_id
@@ -488,6 +490,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
                   hasImage: it.has_image,
                   updatedAt: it.updated_at,
                   isAddedOnScan: it.is_added_on_scan,
+                  scanExempt: it.scan_exempt,
                 }}
                 variant="detail"
                 isPartial={invoice.status === "completed_partial"}

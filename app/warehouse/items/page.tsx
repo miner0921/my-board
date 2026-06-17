@@ -4,10 +4,14 @@ import { auth } from "@/auth";
 import { query } from "@/lib/db";
 import DeleteButton from "./DeleteButton";
 import SortSelect from "./SortSelect";
+import CategorySelect from "./CategorySelect";
 import NewItemButton from "./NewItemButton";
 import EditItemButton from "./EditItemButton";
 import BulkUploadButton from "./BulkUploadButton";
 import BarcodeTag from "../_components/BarcodeTag";
+
+// 상품명 맨 앞 괄호 = 카테고리. SQL 추출과 동일 의미.
+const CATEGORY_REGEX = "^\\(([^)]+)\\)";
 
 // 정렬 옵션 화이트리스트. key는 SortSelect의 <option value>와 일치.
 // orderBy는 고정 문자열만 사용 (사용자 입력을 SQL에 직접 넣지 않음).
@@ -29,6 +33,7 @@ type Item = {
   created_at: string;
   updated_at: string;
   is_auto_created: boolean;
+  scan_exempt: boolean;
   author_nickname: string | null;
 };
 
@@ -53,6 +58,7 @@ type PageProps = {
     nobarcode?: string;
     noimage?: string;
     sort?: string;
+    cat?: string;
   }>;
 };
 
@@ -65,11 +71,13 @@ export default async function ItemListPage({ searchParams }: PageProps) {
     nobarcode: nbParam,
     noimage: niParam,
     sort: sortParam,
+    cat: catParam,
   } = await searchParams;
   const q = (qParam ?? "").trim();
   const noBarcode = nbParam === "1";
   const noImage = niParam === "1";
-  const isFiltered = q !== "" || noBarcode || noImage;
+  const cat = (catParam ?? "").trim();
+  const isFiltered = q !== "" || noBarcode || noImage || cat !== "";
 
   // 정렬: 화이트리스트에 없으면 기본(이름순)으로
   const sort = sortParam && SORT_OPTIONS[sortParam] ? sortParam : DEFAULT_SORT;
@@ -86,12 +94,21 @@ export default async function ItemListPage({ searchParams }: PageProps) {
   }
   if (noBarcode) conditions.push(`i.barcode IS NULL`);
   if (noImage) conditions.push(`i.image_data IS NULL`);
+  // 카테고리 필터: "__none__"=괄호 없는 품목, 그 외=첫 괄호 안 값 일치
+  if (cat === "__none__") {
+    conditions.push(`i.name !~ '${CATEGORY_REGEX}'`);
+  } else if (cat !== "") {
+    params.push(cat);
+    conditions.push(
+      `substring(i.name from '${CATEGORY_REGEX}') = $${params.length}`
+    );
+  }
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
   const result = await query(
     `SELECT
        i.id, i.barcode, i.name, i.created_by, i.created_at, i.updated_at,
-       i.is_auto_created,
+       i.is_auto_created, i.scan_exempt,
        (i.image_data IS NOT NULL) AS has_image,
        u.nickname AS author_nickname
      FROM items i
@@ -102,6 +119,17 @@ export default async function ItemListPage({ searchParams }: PageProps) {
   );
 
   const items: Item[] = result.rows;
+
+  // 카테고리 드롭다운 옵션 (전체 품목 기준 distinct — 다른 필터와 무관하게 안정)
+  const catResult = await query(
+    `SELECT DISTINCT substring(name from '${CATEGORY_REGEX}') AS cat
+       FROM items
+      WHERE substring(name from '${CATEGORY_REGEX}') IS NOT NULL
+      ORDER BY cat`
+  );
+  const categories: string[] = catResult.rows
+    .map((r) => r.cat as string | null)
+    .filter((c): c is string => !!c);
 
   return (
     <div className="max-w-6xl">
@@ -149,6 +177,7 @@ export default async function ItemListPage({ searchParams }: PageProps) {
           />
           이미지 없음
         </label>
+        <CategorySelect value={cat} categories={categories} />
         <SortSelect value={sort} />
         <button
           type="submit"
@@ -216,8 +245,13 @@ export default async function ItemListPage({ searchParams }: PageProps) {
                   <h2 className="font-medium text-[11px] sm:text-xs text-zinc-900 line-clamp-2 leading-snug">
                     {item.name}
                   </h2>
-                  <div className="mt-1">
+                  <div className="mt-1 flex items-center gap-1 flex-wrap">
                     <BarcodeTag barcode={item.barcode} />
+                    {item.scan_exempt && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] border bg-zinc-100 text-zinc-500 border-zinc-200">
+                        스캔 불필요
+                      </span>
+                    )}
                   </div>
                   <p className="text-[11px] text-zinc-400 mt-1 line-clamp-1">
                     {item.author_nickname ?? "(삭제된 사용자)"} ·{" "}

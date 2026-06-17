@@ -228,10 +228,11 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
        i.id, i.invoice_no, i.order_no,
        i.recipient_name, i.recipient_phone,
        i.status, i.customer_type, i.created_at, i.completed_at,
-       COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
-       COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
+       COALESCE(SUM(ii.quantity) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int      AS total_qty,
+       COALESCE(SUM(ii.scanned_count) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int AS scanned_qty
      FROM invoices i
      LEFT JOIN invoice_items ii ON ii.invoice_id = i.id
+     LEFT JOIN items it ON it.id = ii.item_id
      ${where}
      GROUP BY i.id
      ORDER BY ${orderCol} DESC NULLS LAST`,

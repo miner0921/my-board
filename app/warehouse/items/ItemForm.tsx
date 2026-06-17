@@ -20,6 +20,7 @@ export default function ItemForm(props: Props) {
 
   const [barcode, setBarcode] = useState("");
   const [name, setName] = useState("");
+  const [scanExempt, setScanExempt] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(isEdit);
@@ -48,6 +49,7 @@ export default function ItemForm(props: Props) {
         }
         setBarcode(data.item.barcode ?? "");
         setName(data.item.name ?? "");
+        setScanExempt(!!data.item.scan_exempt);
         setHasExistingImage(!!data.item.has_image);
         setExistingImageStamp(new Date(data.item.updated_at).getTime());
       } catch (err) {
@@ -119,6 +121,7 @@ export default function ItemForm(props: Props) {
       const formData = new FormData();
       formData.append("barcode", barcode); // 빈 문자열 OK (서버에서 NULL 변환)
       formData.append("name", name);
+      formData.append("scan_exempt", scanExempt ? "1" : "");
       if (newImageFile) {
         formData.append("image", newImageFile);
       } else if (isEdit && removeExisting) {
@@ -185,6 +188,22 @@ export default function ItemForm(props: Props) {
         />
         <p className="text-xs text-zinc-400 mt-1">{name.length} / 200자</p>
       </div>
+
+      {/* 스캔 불필요 */}
+      <label className="flex items-start gap-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={scanExempt}
+          onChange={(e) => setScanExempt(e.target.checked)}
+          className="mt-0.5 accent-zinc-900"
+        />
+        <span className="text-sm text-zinc-700">
+          스캔 불필요
+          <span className="block text-xs text-zinc-400">
+            동봉 인쇄물 등 — 챙기되 바코드 스캔/진행률에서 제외됩니다.
+          </span>
+        </span>
+      </label>
 
       {/* 이미지 (선택) */}
       <div>

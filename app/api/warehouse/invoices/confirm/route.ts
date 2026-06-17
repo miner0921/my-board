@@ -12,6 +12,7 @@ import {
 } from "@/lib/parse-excel";
 import { parseProductName } from "@/lib/parse-product";
 import { normalizeProductName } from "@/lib/normalize-product";
+import { isScanExemptName } from "@/lib/scan-exempt";
 import { logAccess } from "@/lib/audit";
 
 // POST: 같은 발주서/송장 파일 두 개를 다시 받아 트랜잭션으로 실제 저장.
@@ -113,10 +114,10 @@ export async function POST(request: Request) {
         let insertedItems = 0;
         for (const norm of newItems) {
           const r = await client.query(
-            `INSERT INTO items (name, barcode, image_data, image_mime, created_by, is_auto_created)
-             VALUES ($1, NULL, NULL, NULL, $2, TRUE)
+            `INSERT INTO items (name, barcode, image_data, image_mime, created_by, is_auto_created, scan_exempt)
+             VALUES ($1, NULL, NULL, NULL, $2, TRUE, $3)
              RETURNING id`,
-            [norm, userId]
+            [norm, userId, isScanExemptName(norm)]
           );
           itemByNormalized.set(norm, r.rows[0].id);
           insertedItems++;

@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     const baseSelect = `
       SELECT
         i.id, i.barcode, i.name, i.created_by, i.created_at, i.updated_at,
-        i.is_auto_created,
+        i.is_auto_created, i.scan_exempt,
         (i.image_data IS NOT NULL) AS has_image,
         u.nickname AS author_nickname
       FROM items i
@@ -74,6 +74,7 @@ export async function POST(request: Request) {
     const barcodeRaw = String(formData.get("barcode") ?? "").trim();
     const name = String(formData.get("name") ?? "").trim();
     const image = formData.get("image");
+    const scanExempt = formData.get("scan_exempt") === "1";
 
     if (!name) {
       return NextResponse.json(
@@ -109,11 +110,11 @@ export async function POST(request: Request) {
 
     // 바코드는 중복 허용 (016에서 UNIQUE 제약 해제) — 같은 바코드 품목 여럿 OK.
     const result = await query(
-      `INSERT INTO items (barcode, name, image_data, image_mime, created_by)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, barcode, name, created_by, created_at,
+      `INSERT INTO items (barcode, name, image_data, image_mime, created_by, scan_exempt)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, barcode, name, created_by, created_at, scan_exempt,
                  (image_data IS NOT NULL) AS has_image`,
-      [barcode, name, imageBuffer, imageMime, session.user.id]
+      [barcode, name, imageBuffer, imageMime, session.user.id, scanExempt]
     );
 
     await logAccess({

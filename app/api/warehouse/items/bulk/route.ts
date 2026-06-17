@@ -5,6 +5,7 @@ import { readUploadedSpreadsheet } from "@/lib/upload";
 import { parseItemsSheet } from "@/lib/parse-excel";
 import { normalizeProductName } from "@/lib/normalize-product";
 import { classifyBulkItems } from "@/lib/bulk-items";
+import { isScanExemptName } from "@/lib/scan-exempt";
 import { logAccess } from "@/lib/audit";
 
 // POST: 품목 대량 등록 확정 저장.
@@ -69,10 +70,10 @@ export async function POST(request: Request) {
 
         if (row.action === "create") {
           const ins = await client.query(
-            `INSERT INTO items (barcode, name, created_by, is_auto_created)
-             VALUES ($1, $2, $3, FALSE)
+            `INSERT INTO items (barcode, name, created_by, is_auto_created, scan_exempt)
+             VALUES ($1, $2, $3, FALSE, $4)
              RETURNING id`,
-            [row.barcode, row.name, userId]
+            [row.barcode, row.name, userId, isScanExemptName(row.name)]
           );
           idByNormalized.set(row.normalized, ins.rows[0].id);
           inserted++;

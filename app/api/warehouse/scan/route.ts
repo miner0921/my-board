@@ -58,10 +58,11 @@ export async function POST(request: Request) {
     // ── 1) invoice_no 매칭? ─────────────────────────────────
     const invMatch = await query(
       `SELECT i.id, i.invoice_no, i.status,
-              COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
-              COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
+              COALESCE(SUM(ii.quantity) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int      AS total_qty,
+              COALESCE(SUM(ii.scanned_count) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int AS scanned_qty
          FROM invoices i
          LEFT JOIN invoice_items ii ON ii.invoice_id = i.id
+         LEFT JOIN items it ON it.id = ii.item_id
         WHERE i.invoice_no = $1
         GROUP BY i.id`,
       [barcode]
@@ -85,10 +86,11 @@ export async function POST(request: Request) {
       ) {
         const cur = await query(
           `SELECT i.id, i.invoice_no,
-                  COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
-                  COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
+                  COALESCE(SUM(ii.quantity) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int      AS total_qty,
+                  COALESCE(SUM(ii.scanned_count) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int AS scanned_qty
              FROM invoices i
              LEFT JOIN invoice_items ii ON ii.invoice_id = i.id
+             LEFT JOIN items it ON it.id = ii.item_id
             WHERE i.id = $1
             GROUP BY i.id`,
           [currentInvoiceId]
@@ -237,7 +239,7 @@ export async function POST(request: Request) {
       // 품목 행 락 (+ 바코드/이름 — 송장 기반 바코드 매칭에 사용)
       const rowsRes = await client.query(
         `SELECT ii.id AS invoice_item_id, ii.item_id, ii.quantity, ii.scanned_count,
-                it.name AS item_name, it.barcode AS item_barcode
+                it.name AS item_name, it.barcode AS item_barcode, it.scan_exempt
            FROM invoice_items ii
            JOIN items it ON it.id = ii.item_id
           WHERE ii.invoice_id = $1
@@ -251,6 +253,7 @@ export async function POST(request: Request) {
         scanned_count: number;
         item_name: string;
         item_barcode: string | null;
+        scan_exempt: boolean;
       }> = rowsRes.rows;
 
       // 송장 기반 매칭: 스캔한 바코드를 "현재 송장 품목" 중에서 찾는다.
@@ -300,7 +303,7 @@ export async function POST(request: Request) {
             [currentInvoiceId, matchedItem.id, userId]
           );
 
-          // 새 행을 포함한 진행률 재계산
+          // 새 행을 포함한 진행률 재계산 (스캔 불필요 품목은 제외)
           const newRows = [
             ...rows,
             {
@@ -308,16 +311,20 @@ export async function POST(request: Request) {
               item_id: matchedItem.id,
               quantity: 1,
               scanned_count: 1,
+              item_name: matchedItem.name as string,
+              item_barcode: null,
+              scan_exempt: false,
             },
           ];
-          const totalQty = newRows.reduce((s, r) => s + r.quantity, 0);
-          const scannedQty = newRows.reduce(
+          const scannable = newRows.filter((r) => !r.scan_exempt);
+          const totalQty = scannable.reduce((s, r) => s + r.quantity, 0);
+          const scannedQty = scannable.reduce(
             (s, r) => s + Math.min(r.scanned_count, r.quantity),
             0
           );
           const allFilled =
-            newRows.length > 0 &&
-            newRows.every((r) => r.scanned_count >= r.quantity);
+            scannable.length > 0 &&
+            scannable.every((r) => r.scanned_count >= r.quantity);
 
           let completedAt: string | null = null;
           if (allFilled) {
@@ -434,15 +441,17 @@ export async function POST(request: Request) {
           ? { ...r, scanned_count: nextCount }
           : r
       );
-      const totalQty = updatedRows.reduce((s, r) => s + r.quantity, 0);
-      const scannedQty = updatedRows.reduce(
+      // 진행률·완료 판정에서 스캔 불필요 품목은 제외
+      const scannable = updatedRows.filter((r) => !r.scan_exempt);
+      const totalQty = scannable.reduce((s, r) => s + r.quantity, 0);
+      const scannedQty = scannable.reduce(
         (s, r) => s + Math.min(r.scanned_count, r.quantity),
         0
       );
-      // 완료 판정은 "각 품목이 quantity 이상" 모두 채워졌을 때
+      // 완료 판정은 "스캔 대상 각 품목이 quantity 이상" 모두 채워졌을 때
       const allFilled =
-        updatedRows.length > 0 &&
-        updatedRows.every((r) => r.scanned_count >= r.quantity);
+        scannable.length > 0 &&
+        scannable.every((r) => r.scanned_count >= r.quantity);
 
       let completedAt: string | null = null;
       if (allFilled) {
@@ -672,10 +681,11 @@ async function loadInvoiceFull(invoiceId: number): Promise<{
          i.id, i.invoice_no, i.order_no, i.status,
          i.customer_type, i.created_at,
          i.recipient_name, i.recipient_phone, i.recipient_address,
-         COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
-         COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
+         COALESCE(SUM(ii.quantity) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int      AS total_qty,
+         COALESCE(SUM(ii.scanned_count) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int AS scanned_qty
        FROM invoices i
        LEFT JOIN invoice_items ii ON ii.invoice_id = i.id
+       LEFT JOIN items it ON it.id = ii.item_id
        WHERE i.id = $1
        GROUP BY i.id`,
       [invoiceId]
@@ -684,7 +694,7 @@ async function loadInvoiceFull(invoiceId: number): Promise<{
       `SELECT
          ii.id AS invoice_item_id,
          ii.item_id, ii.quantity, ii.scanned_count, ii.display_name,
-         it.name, it.barcode, it.updated_at,
+         it.name, it.barcode, it.updated_at, it.scan_exempt,
          (it.image_data IS NOT NULL) AS has_image
        FROM invoice_items ii
        JOIN items it ON it.id = ii.item_id
