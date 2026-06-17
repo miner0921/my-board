@@ -1,10 +1,10 @@
-import { CheckCircle2, Circle } from "lucide-react";
+import { CheckCircle2, Circle, Hand } from "lucide-react";
 
-// 검수 화면 전용 제품 카드 — 이미지 위 + 정보(품목명/수량/스캔수) 아래, 한 줄 5개.
-//   - 완료(전부 스캔): 초록 테두리/배경 + ✓
-//   - 미스캔(0개): 회색 + 흐리게(opacity) + ○
-//   - 진행중(일부): 그대로 + N/M 표시 (전부 찍어야 완료)
-// 색상/디자인 토큰은 기존 카드와 동일. 마지막 스캔 항목은 highlighted로 강조.
+// 검수 화면 제품 카드 — 이미지 위 + 정보 아래, 한 줄 5개.
+//   - 바코드 있는 품목: 스캔으로 확인
+//   - 바코드 없는 품목 + 동봉: 탭하면 수량 입력(수동 챙김)
+//   - scan_exempt = 동봉 표시(배지)일 뿐, 검수에서 빠지지 않음(반드시 확인 필요)
+// 검수 화면에서는 "아직 안 끝난 것"만 넘어오므로 보통 complete 카드는 안 보인다.
 
 type ScanItemCardData = {
   itemId: number;
@@ -15,52 +15,68 @@ type ScanItemCardData = {
   hasImage: boolean;
   updatedAt: string;
   isAddedOnScan: boolean;
-  scanExempt?: boolean;
+  scanExempt?: boolean; // 동봉 배지용
 };
 
 export default function ScanItemCard({
   item,
   highlighted = false,
+  onPick,
 }: {
   item: ScanItemCardData;
   highlighted?: boolean;
+  onPick?: () => void; // 바코드 없는 품목 수동 챙김
 }) {
   const { quantity, scannedCount } = item;
-  const exempt = !!item.scanExempt;
-  const complete = !exempt && scannedCount >= quantity && quantity > 0;
-  const over = !exempt && scannedCount > quantity && quantity > 0;
-  const notStarted = !exempt && scannedCount === 0;
+  const complete = scannedCount >= quantity && quantity > 0;
+  const over = scannedCount > quantity && quantity > 0;
+  const notStarted = scannedCount === 0;
+  const manual = !item.barcode; // 바코드 없음 → 수동 챙김 대상
+  const clickable = manual && !!onPick;
 
-  const borderClass = exempt
-    ? "border-zinc-200 border-dashed"
-    : over
+  const borderClass = over
     ? "border-red-400 ring-2 ring-red-200"
     : complete
       ? "border-green-400 bg-green-50"
-      : item.isAddedOnScan
-        ? "border-amber-400"
-        : "border-zinc-200";
+      : manual
+        ? "border-blue-300"
+        : item.isAddedOnScan
+          ? "border-amber-400"
+          : "border-zinc-200";
 
   return (
     <div
+      onClick={clickable ? onPick : undefined}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onPick?.();
+              }
+            }
+          : undefined
+      }
       className={`relative border rounded-lg overflow-hidden bg-white flex flex-col transition-all ${borderClass} ${
-        notStarted && !over ? "opacity-60" : ""
-      } ${highlighted ? "shadow-md scale-[1.02]" : ""}`}
+        notStarted && !over ? "opacity-95" : ""
+      } ${highlighted ? "shadow-md scale-[1.02]" : ""} ${
+        clickable ? "cursor-pointer hover:shadow-md" : ""
+      }`}
     >
-      {/* 완료 ✓ / 미완료 ○ (스캔 불필요는 아이콘 없음) */}
-      {!exempt && (
-        <div className="absolute top-1 right-1 z-10">
-          {complete ? (
-            <CheckCircle2
-              size={18}
-              strokeWidth={2}
-              className="text-green-600 drop-shadow-sm"
-            />
-          ) : (
-            <Circle size={18} strokeWidth={2} className="text-zinc-300" />
-          )}
-        </div>
-      )}
+      {/* 완료 ✓ / 미완료 ○ */}
+      <div className="absolute top-1 right-1 z-10">
+        {complete ? (
+          <CheckCircle2
+            size={18}
+            strokeWidth={2}
+            className="text-green-600 drop-shadow-sm"
+          />
+        ) : (
+          <Circle size={18} strokeWidth={2} className="text-zinc-300" />
+        )}
+      </div>
 
       {/* 이미지 */}
       <div className="aspect-square bg-zinc-50 border-b border-zinc-100 flex items-center justify-center overflow-hidden">
@@ -82,35 +98,34 @@ export default function ScanItemCard({
           {item.name}
         </h3>
         <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-          {exempt ? (
-            <span className="px-1.5 py-0.5 rounded text-[11px] border bg-zinc-100 text-zinc-500 border-zinc-200">
-              스캔 불필요
+          <span className="text-[11px] text-zinc-500">×{quantity}</span>
+          <span
+            className={`px-1.5 py-0.5 rounded text-[11px] font-semibold border ${
+              over
+                ? "bg-red-50 text-red-700 border-red-200"
+                : complete
+                  ? "bg-green-50 text-green-700 border-green-200"
+                  : "bg-zinc-50 text-zinc-600 border-zinc-200"
+            }`}
+          >
+            {scannedCount}/{quantity}
+          </span>
+          {item.scanExempt && (
+            <span className="px-1 py-0.5 rounded text-[11px] border bg-zinc-100 text-zinc-500 border-zinc-200">
+              동봉
             </span>
-          ) : (
-            <>
-              <span className="text-[11px] text-zinc-500">×{quantity}</span>
-              <span
-                className={`px-1.5 py-0.5 rounded text-[11px] font-semibold border ${
-                  over
-                    ? "bg-red-50 text-red-700 border-red-200"
-                    : complete
-                      ? "bg-green-50 text-green-700 border-green-200"
-                      : "bg-zinc-50 text-zinc-600 border-zinc-200"
-                }`}
-              >
-                {scannedCount}/{quantity}
-              </span>
-              {item.isAddedOnScan && (
-                <span className="px-1 py-0.5 rounded text-[11px] border bg-amber-50 text-amber-700 border-amber-200">
-                  현장
-                </span>
-              )}
-            </>
+          )}
+          {item.isAddedOnScan && (
+            <span className="px-1 py-0.5 rounded text-[11px] border bg-amber-50 text-amber-700 border-amber-200">
+              현장
+            </span>
           )}
         </div>
-        {!exempt && !item.barcode && (
-          <span className="mt-1 inline-block w-fit px-1 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[11px]">
-            바코드 미등록
+        {/* 바코드 없음 → 수동 챙김 안내 */}
+        {manual && (
+          <span className="mt-1 inline-flex items-center gap-1 w-fit px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[11px]">
+            <Hand size={11} strokeWidth={1.75} />
+            탭하여 수량 입력
           </span>
         )}
       </div>

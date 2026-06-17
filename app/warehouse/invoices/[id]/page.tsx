@@ -154,14 +154,13 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
          uc.nickname AS created_by_name,
          us.nickname AS scan_started_by_name,
          uo.nickname AS completed_by_name,
-         COALESCE(SUM(ii.quantity) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int      AS total_qty,
-         COALESCE(SUM(ii.scanned_count) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int AS scanned_qty
+         COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
+         COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
        FROM invoices i
        LEFT JOIN users uc          ON i.created_by      = uc.id
        LEFT JOIN users us          ON i.scan_started_by = us.id
        LEFT JOIN users uo          ON i.completed_by    = uo.id
        LEFT JOIN invoice_items ii  ON ii.invoice_id     = i.id
-       LEFT JOIN items it          ON it.id             = ii.item_id
        WHERE i.id = $1 AND i.deleted_at IS NULL
        GROUP BY i.id, uc.nickname, us.nickname, uo.nickname`,
       [id]

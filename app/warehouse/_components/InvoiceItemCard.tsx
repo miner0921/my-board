@@ -34,18 +34,17 @@ export default function InvoiceItemCard({
   isPartial?: boolean;
 }) {
   const { quantity, scannedCount } = item;
+  // scan_exempt = 동봉(배지)일 뿐, 검수에서 빠지지 않음 → 카운트/완료 정상 표시.
   const exempt = !!item.scanExempt;
-  const complete = !exempt && scannedCount >= quantity && quantity > 0;
-  const over = !exempt && scannedCount > quantity && quantity > 0;
+  const complete = scannedCount >= quantity && quantity > 0;
+  const over = scannedCount > quantity && quantity > 0;
   const overCount = scannedCount - quantity;
   const lack = Math.max(0, quantity - scannedCount);
-  const isShort = !exempt && isPartial && lack > 0; // detail 전용
+  const isShort = isPartial && lack > 0; // detail 전용
   const showOriginal = !!item.displayName && item.displayName !== item.name;
 
   // 상태 테두리 — 기존 토큰 유지(검수는 약간 더 진하고 over에 ring).
-  const borderClass = exempt
-    ? "border-zinc-200 border-dashed"
-    : over
+  const borderClass = over
     ? variant === "scan"
       ? "border-red-400 ring-2 ring-red-200"
       : "border-red-300"
@@ -83,42 +82,37 @@ export default function InvoiceItemCard({
           </p>
         )}
         <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-          {exempt ? (
+          <span className="font-medium text-xs text-zinc-700">×{quantity}</span>
+          <span
+            className={`px-1.5 py-0.5 rounded text-[10px] border ${
+              over
+                ? "bg-red-50 text-red-700 border-red-200"
+                : complete
+                  ? "bg-green-50 text-green-700 border-green-200"
+                  : "bg-zinc-50 text-zinc-600 border-zinc-200"
+            }`}
+          >
+            스캔 {scannedCount}/{quantity}
+          </span>
+          {exempt && (
             <span className="px-1.5 py-0.5 rounded text-[10px] border bg-zinc-100 text-zinc-500 border-zinc-200">
-              스캔 불필요
+              동봉
             </span>
-          ) : (
-            <>
-              <span className="font-medium text-xs text-zinc-700">
-                ×{quantity}
-              </span>
-              <span
-                className={`px-1.5 py-0.5 rounded text-[10px] border ${
-                  over
-                    ? "bg-red-50 text-red-700 border-red-200"
-                    : complete
-                      ? "bg-green-50 text-green-700 border-green-200"
-                      : "bg-zinc-50 text-zinc-600 border-zinc-200"
-                }`}
-              >
-                스캔 {scannedCount}/{quantity}
-              </span>
-              {over && (
-                <span className="px-1.5 py-0.5 rounded text-[10px] border bg-red-50 text-red-700 border-red-200">
-                  초과 +{overCount}
-                </span>
-              )}
-              {item.isAddedOnScan && (
-                <span className="px-1.5 py-0.5 rounded text-[10px] border bg-amber-50 text-amber-700 border-amber-200">
-                  현장 추가
-                </span>
-              )}
-              {isShort && (
-                <span className="px-1.5 py-0.5 rounded text-[10px] border bg-red-50 text-red-700 border-red-200">
-                  결품 {lack}
-                </span>
-              )}
-            </>
+          )}
+          {over && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] border bg-red-50 text-red-700 border-red-200">
+              초과 +{overCount}
+            </span>
+          )}
+          {item.isAddedOnScan && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] border bg-amber-50 text-amber-700 border-amber-200">
+              현장 추가
+            </span>
+          )}
+          {isShort && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] border bg-red-50 text-red-700 border-red-200">
+              결품 {lack}
+            </span>
           )}
         </div>
       </div>

@@ -68,11 +68,9 @@ export async function POST(request: Request) {
 
       // 진행률 확인 (0이면 거부)
       const sumRes = await client.query(
-        `SELECT COALESCE(SUM(ii.scanned_count) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int AS scanned,
-                COALESCE(SUM(ii.quantity) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int      AS total
-           FROM invoice_items ii
-           JOIN items it ON it.id = ii.item_id
-          WHERE ii.invoice_id = $1`,
+        `SELECT COALESCE(SUM(scanned_count), 0)::int AS scanned,
+                COALESCE(SUM(quantity), 0)::int      AS total
+           FROM invoice_items WHERE invoice_id = $1`,
         [invoiceId]
       );
       const scanned = sumRes.rows[0]?.scanned ?? 0;

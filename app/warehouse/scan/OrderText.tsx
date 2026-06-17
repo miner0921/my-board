@@ -21,18 +21,8 @@ export default function OrderText({ items }: { items: OrderTextItem[] }) {
       <p className="text-sm leading-relaxed">
         {items.map((it, i) => {
           const label = it.display_name?.trim() || it.name;
-          // 스캔 불필요 품목: 취소선/카운트 없이 회색 안내(챙기되 안 찍음)
-          if (it.scan_exempt) {
-            return (
-              <span key={it.invoice_item_id}>
-                {i > 0 && <span className="text-zinc-300 mx-1">/</span>}
-                <span className="text-zinc-400">
-                  {label}
-                  <span className="text-[11px]"> (스캔 불필요)</span>
-                </span>
-              </span>
-            );
-          }
+          // 모든 품목을 원문 순서 그대로. 완료(다 챙김/다 찍음)면 취소선.
+          // 동봉도 동일하게 표시(원래 위치 유지)하고 작은 "(동봉)" 표식만 붙임.
           const complete = it.scanned_count >= it.quantity && it.quantity > 0;
           const partial = !complete && it.scanned_count > 0;
           return (
@@ -45,6 +35,12 @@ export default function OrderText({ items }: { items: OrderTextItem[] }) {
               >
                 {label}
                 {it.quantity}
+                {it.scan_exempt && (
+                  <span className="text-zinc-400 no-underline text-[11px]">
+                    {" "}
+                    (동봉)
+                  </span>
+                )}
                 {partial && (
                   <span className="text-zinc-400 no-underline">
                     {" "}

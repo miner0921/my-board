@@ -198,9 +198,9 @@ export default function ItemForm(props: Props) {
           className="mt-0.5 accent-zinc-900"
         />
         <span className="text-sm text-zinc-700">
-          스캔 불필요
+          동봉(안내물)
           <span className="block text-xs text-zinc-400">
-            동봉 인쇄물 등 — 챙기되 바코드 스캔/진행률에서 제외됩니다.
+            동봉 인쇄물 표시용 배지. 검수 시 수동 챙김으로 확인합니다(제외 아님).
           </span>
         </span>
       </label>

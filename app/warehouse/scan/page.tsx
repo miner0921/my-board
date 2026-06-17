@@ -8,7 +8,7 @@ import CancelInvoiceModal from "./CancelInvoiceModal";
 import OverQuantityModal from "./OverQuantityModal";
 import OrderText from "./OrderText";
 import ScanItemCard from "./ScanItemCard";
-import { sortScanItems } from "./sortScanItems";
+import QuantityModal from "./QuantityModal";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import {
   beepComplete,
@@ -136,6 +136,9 @@ export default function ScanPage() {
   // 완료 배너 (자동 사라지지 않음 — 새 송장 진입할 때만 해제)
   const [completeBanner, setCompleteBanner] = useState<CompleteBanner>(null);
 
+  // 수동 챙김(수량 입력) 대상 품목
+  const [manualTarget, setManualTarget] = useState<ItemPayload | null>(null);
+
   const inputRef = useRef<HTMLInputElement | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -144,7 +147,8 @@ export default function ScanPage() {
     overQty !== null ||
     invoiceChange !== null ||
     partialOpen ||
-    cancelOpen;
+    cancelOpen ||
+    manualTarget !== null;
 
   // 송장이 완료/부분완료 상태면 "세션 끝" — 품목 스캔은 서버에서 자연스럽게
   // scan_no_invoice로 처리되도록 current_invoice_id=null로 보냄.
@@ -656,12 +660,86 @@ export default function ScanPage() {
     invoice.status === "pending" &&
     invoice.scanned_qty > 0;
 
-  // [시험용] 카드 표시 순서: 방금 찍은 것 → 안 찍은 것 → 찍은 것.
-  // 등록순 고정으로 되돌리려면 SORT_BY_SCAN = false 한 줄만 바꾸면 됨.
-  const SORT_BY_SCAN = true;
-  const displayItems = SORT_BY_SCAN
-    ? sortScanItems(items, lastScannedId)
-    : items;
+  // 검수 화면: 아직 안 끝난 품목만 카드로 표시(끝나면 사라짐).
+  // 순서는 송장 원문 순서(ii.id) 그대로 — 정렬하지 않는다.
+  const displayItems = items.filter(
+    (it) => !(it.scanned_count >= it.quantity && it.quantity > 0)
+  );
+
+  // 수동 챙김 확정 (바코드 없는 품목 + 동봉)
+  const handleManualPick = async (count: number) => {
+    const target = manualTarget;
+    if (!invoice || !target) return;
+    setManualTarget(null);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/warehouse/scan/manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          invoice_id: invoice.id,
+          invoice_item_id: target.invoice_item_id,
+          count,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setStatusKind("error");
+        setStatusMsg(data?.error ?? "수동 챙김에 실패했습니다.");
+        triggerFlash("error");
+        beepError();
+        vibrate([100, 50, 100]);
+        return;
+      }
+      updateItemCount(data.item.invoice_item_id, data.item.scanned_count);
+      setLastScannedId(data.item.invoice_item_id);
+      if (data.type === "invoice_complete") {
+        setInvoice((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: "completed",
+                scanned_qty: data.invoice.scanned_qty,
+                total_qty: data.invoice.total_qty,
+              }
+            : prev
+        );
+        setStatusKind("ok");
+        setStatusMsg(
+          data.auto_reopened ? "자동 재개 후 다시 완료!" : "송장 완료!"
+        );
+        triggerFlash("complete");
+        beepComplete();
+        vibrate([200, 100, 200]);
+        setCompleteBanner({ kind: "full", invoice_no: data.invoice.invoice_no });
+      } else {
+        setInvoice((prev) =>
+          prev
+            ? {
+                ...prev,
+                scanned_qty: data.invoice.scanned_qty,
+                total_qty: data.invoice.total_qty,
+              }
+            : prev
+        );
+        applyAutoReopen(data);
+        setStatusKind("ok");
+        setStatusMsg(
+          `${data.item.name} 챙김 (${data.item.scanned_count}/${data.item.quantity})`
+        );
+        triggerFlash("ok");
+        beepSuccess();
+        vibrate(50);
+      }
+    } catch (e) {
+      console.error(e);
+      setStatusKind("error");
+      setStatusMsg("네트워크 오류가 발생했습니다.");
+    } finally {
+      setLoading(false);
+      resetAndFocus();
+    }
+  };
 
   return (
     <div className="max-w-5xl">
@@ -850,11 +928,18 @@ export default function ScanPage() {
       {/* 2) 발주서 원문 텍스트 — 스캔 완료분 초록 취소선. 카드와 같은 items 소스 */}
       {invoice && <OrderText items={items} />}
 
-      {/* 3) 제품 카드 그리드 — 이미지 위 + 정보 아래, 한 줄 5개 */}
+      {/* 3) 제품 카드 그리드 — 아직 확인 안 한 품목만 */}
+      {invoice && items.length > 0 && (
+        <p className="text-[11px] text-zinc-500 mb-1.5">남은 상품</p>
+      )}
       {invoice &&
         (items.length === 0 ? (
           <div className="text-center py-8 border border-dashed border-zinc-300 rounded-lg text-zinc-500 text-sm">
             연결된 품목이 없습니다.
+          </div>
+        ) : displayItems.length === 0 ? (
+          <div className="text-center py-8 border border-dashed border-green-300 bg-green-50 rounded-lg text-green-700 text-sm">
+            모든 품목을 확인했습니다.
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
@@ -873,6 +958,9 @@ export default function ScanPage() {
                   scanExempt: it.scan_exempt === true,
                 }}
                 highlighted={lastScannedId === it.invoice_item_id}
+                onPick={
+                  !it.barcode ? () => setManualTarget(it) : undefined
+                }
               />
             ))}
           </div>
@@ -948,6 +1036,19 @@ export default function ScanPage() {
           totalQty={invoice.total_qty}
           onCancel={() => setCancelOpen(false)}
           onConfirm={handleCancelInvoiceConfirm}
+        />
+      )}
+      {manualTarget && (
+        <QuantityModal
+          item={{
+            invoice_item_id: manualTarget.invoice_item_id,
+            name: manualTarget.name,
+            quantity: manualTarget.quantity,
+            scanned_count: manualTarget.scanned_count,
+            scan_exempt: manualTarget.scan_exempt === true,
+          }}
+          onConfirm={handleManualPick}
+          onClose={() => setManualTarget(null)}
         />
       )}
     </div>

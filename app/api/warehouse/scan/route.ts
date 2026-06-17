@@ -58,11 +58,10 @@ export async function POST(request: Request) {
     // ── 1) invoice_no 매칭? ─────────────────────────────────
     const invMatch = await query(
       `SELECT i.id, i.invoice_no, i.status,
-              COALESCE(SUM(ii.quantity) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int      AS total_qty,
-              COALESCE(SUM(ii.scanned_count) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int AS scanned_qty
+              COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
+              COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
          FROM invoices i
          LEFT JOIN invoice_items ii ON ii.invoice_id = i.id
-         LEFT JOIN items it ON it.id = ii.item_id
         WHERE i.invoice_no = $1 AND i.deleted_at IS NULL
         GROUP BY i.id`,
       [barcode]
@@ -86,11 +85,10 @@ export async function POST(request: Request) {
       ) {
         const cur = await query(
           `SELECT i.id, i.invoice_no,
-                  COALESCE(SUM(ii.quantity) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int      AS total_qty,
-                  COALESCE(SUM(ii.scanned_count) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int AS scanned_qty
+                  COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
+                  COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
              FROM invoices i
              LEFT JOIN invoice_items ii ON ii.invoice_id = i.id
-             LEFT JOIN items it ON it.id = ii.item_id
             WHERE i.id = $1 AND i.deleted_at IS NULL
             GROUP BY i.id`,
           [currentInvoiceId]
@@ -316,15 +314,15 @@ export async function POST(request: Request) {
               scan_exempt: false,
             },
           ];
-          const scannable = newRows.filter((r) => !r.scan_exempt);
-          const totalQty = scannable.reduce((s, r) => s + r.quantity, 0);
-          const scannedQty = scannable.reduce(
+          // 완료 판정은 모든 품목 기준 (동봉 포함 — 검수 제외 없음)
+          const totalQty = newRows.reduce((s, r) => s + r.quantity, 0);
+          const scannedQty = newRows.reduce(
             (s, r) => s + Math.min(r.scanned_count, r.quantity),
             0
           );
           const allFilled =
-            scannable.length > 0 &&
-            scannable.every((r) => r.scanned_count >= r.quantity);
+            newRows.length > 0 &&
+            newRows.every((r) => r.scanned_count >= r.quantity);
 
           let completedAt: string | null = null;
           if (allFilled) {
@@ -441,17 +439,15 @@ export async function POST(request: Request) {
           ? { ...r, scanned_count: nextCount }
           : r
       );
-      // 진행률·완료 판정에서 스캔 불필요 품목은 제외
-      const scannable = updatedRows.filter((r) => !r.scan_exempt);
-      const totalQty = scannable.reduce((s, r) => s + r.quantity, 0);
-      const scannedQty = scannable.reduce(
+      // 완료 판정은 모든 품목 기준 (동봉 포함 — 검수 제외 없음)
+      const totalQty = updatedRows.reduce((s, r) => s + r.quantity, 0);
+      const scannedQty = updatedRows.reduce(
         (s, r) => s + Math.min(r.scanned_count, r.quantity),
         0
       );
-      // 완료 판정은 "스캔 대상 각 품목이 quantity 이상" 모두 채워졌을 때
       const allFilled =
-        scannable.length > 0 &&
-        scannable.every((r) => r.scanned_count >= r.quantity);
+        updatedRows.length > 0 &&
+        updatedRows.every((r) => r.scanned_count >= r.quantity);
 
       let completedAt: string | null = null;
       if (allFilled) {
@@ -681,11 +677,10 @@ async function loadInvoiceFull(invoiceId: number): Promise<{
          i.id, i.invoice_no, i.order_no, i.status,
          i.customer_type, i.created_at,
          i.recipient_name, i.recipient_phone, i.recipient_address,
-         COALESCE(SUM(ii.quantity) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int      AS total_qty,
-         COALESCE(SUM(ii.scanned_count) FILTER (WHERE it.scan_exempt IS NOT TRUE), 0)::int AS scanned_qty
+         COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
+         COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
        FROM invoices i
        LEFT JOIN invoice_items ii ON ii.invoice_id = i.id
-       LEFT JOIN items it ON it.id = ii.item_id
        WHERE i.id = $1 AND i.deleted_at IS NULL
        GROUP BY i.id`,
       [invoiceId]
