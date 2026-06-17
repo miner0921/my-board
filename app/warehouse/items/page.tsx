@@ -2,11 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { query } from "@/lib/db";
-import { Upload } from "lucide-react";
 import DeleteButton from "./DeleteButton";
 import SortSelect from "./SortSelect";
 import NewItemButton from "./NewItemButton";
 import EditItemButton from "./EditItemButton";
+import BulkUploadButton from "./BulkUploadButton";
 import BarcodeTag from "../_components/BarcodeTag";
 
 // 정렬 옵션 화이트리스트. key는 SortSelect의 <option value>와 일치.
@@ -111,13 +111,7 @@ export default async function ItemListPage({ searchParams }: PageProps) {
           출고할 품목을 등록하고 관리합니다
         </p>
         <div className="flex items-center gap-2">
-          <Link
-            href="/warehouse/items/bulk"
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition"
-          >
-            <Upload size={16} strokeWidth={1.75} />
-            CSV 대량 등록
-          </Link>
+          <BulkUploadButton />
           <NewItemButton />
         </div>
       </div>

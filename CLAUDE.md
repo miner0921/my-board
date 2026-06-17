@@ -46,7 +46,7 @@
 
 - 자동 등록 = 송장 업로드(`/api/warehouse/invoices/confirm`)에서 정규화로 만들어진 품목.
   바코드/이미지 보완을 다른 작업자가 이어받을 수 있어야 해서 공용 수정 허용.
-- 직접 등록 = `/warehouse/items/new`나 CSV 대량 등록으로 만든 품목. 본인 소유로 격리.
+- 직접 등록 = 새 품목 등록(모달)이나 대량 등록(엑셀/CSV)으로 만든 품목. 본인 소유로 격리.
 - 권한 체크는 미들웨어 + 페이지 + API 삼중 방어 원칙 그대로 유지.
 
 ## 페이지 구조
@@ -56,7 +56,7 @@
 | /login | 로그인 | |
 | /warehouse | 출고시스템 대시보드 (메인 랜딩) | |
 | /warehouse/items | 품목 목록/등록/수정/삭제 | 신규 |
-| /warehouse/items/bulk | CSV 대량 등록 | 신규 |
+| (품목 등록/수정/대량등록) | 품목관리 페이지 내 모달 | 별도 페이지 없음 |
 | /warehouse/invoices | 송장 목록/등록 | 신규 |
 | /warehouse/invoices/[id] | 송장 상세 + 품목 매핑 | 신규 |
 | /warehouse/scan | 출고 검수 ⭐핵심⭐ | 신규 |

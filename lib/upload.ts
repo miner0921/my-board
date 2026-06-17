@@ -52,3 +52,25 @@ export async function readUploadedXlsx(file: File): Promise<ValidationResult> {
   const buffer = Buffer.from(await file.arrayBuffer());
   return { ok: true, buffer, mime: file.type };
 }
+
+// 업로드된 스프레드시트(.xlsx 또는 .csv) 검증 + Buffer 반환.
+// 품목 대량 등록용. xlsx 라이브러리가 두 형식을 모두 파싱한다.
+export async function readUploadedSpreadsheet(
+  file: File
+): Promise<ValidationResult> {
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: "파일이 비어있습니다." };
+  }
+  const lower = file.name.toLowerCase();
+  if (!lower.endsWith(".xlsx") && !lower.endsWith(".csv")) {
+    return {
+      ok: false,
+      error: "엑셀(.xlsx) 또는 CSV(.csv) 파일만 업로드할 수 있습니다.",
+    };
+  }
+  if (file.size > MAX_XLSX_BYTES) {
+    return { ok: false, error: "파일은 10MB 이하만 업로드할 수 있습니다." };
+  }
+  const buffer = Buffer.from(await file.arrayBuffer());
+  return { ok: true, buffer, mime: file.type };
+}

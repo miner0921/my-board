@@ -105,6 +105,39 @@ export function parseInvoiceSheet(buffer: Buffer): InvoiceRow[] {
   return rows;
 }
 
+// ── 품목 대량 등록 (.xlsx / .csv) ───────────────────────────
+// 헤더: 품목명 / 바코드 (별칭: 상품명, barcode). 첫 시트, 2행부터 데이터.
+export type ItemUploadRow = {
+  name: string;
+  barcode: string | null;
+  rowNo: number; // 엑셀 행 번호 (헤더=1, 데이터 첫 행=2) — 미리보기 표시용
+};
+
+export function parseItemsSheet(buffer: Buffer): ItemUploadRow[] {
+  const wb = XLSX.read(buffer, { type: "buffer" });
+  const firstSheetName = wb.SheetNames[0];
+  if (!firstSheetName) return [];
+  const sheet = wb.Sheets[firstSheetName];
+  if (!sheet) return [];
+  const arr = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+    defval: "",
+  });
+
+  return arr.map((r, i) => {
+    const name = String(
+      r["품목명"] ?? r["상품명"] ?? r["이름"] ?? ""
+    ).trim();
+    const barcodeRaw = String(
+      r["바코드"] ?? r["barcode"] ?? r["Barcode"] ?? ""
+    ).trim();
+    return {
+      name,
+      barcode: barcodeRaw === "" ? null : barcodeRaw,
+      rowNo: i + 2,
+    };
+  });
+}
+
 // 한 주문번호가 여러 송장으로 분할되는 경우("/1","/2") 매칭 키
 export function orderMatchKey(orderNo: string): string {
   return orderNo.replace(/\/\d+$/, "").trim();
