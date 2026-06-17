@@ -4,7 +4,19 @@ import { auth } from "@/auth";
 import { query } from "@/lib/db";
 import { Plus, Upload } from "lucide-react";
 import DeleteButton from "./DeleteButton";
+import SortSelect from "./SortSelect";
 import BarcodeTag from "../_components/BarcodeTag";
+
+// 정렬 옵션 화이트리스트. key는 SortSelect의 <option value>와 일치.
+// orderBy는 고정 문자열만 사용 (사용자 입력을 SQL에 직접 넣지 않음).
+// 동률 시 i.id로 안정 정렬 (created_at은 대량 업로드 시 동일값 다수).
+const SORT_OPTIONS: Record<string, string> = {
+  name: "i.name ASC, i.id ASC",
+  recent: "i.created_at DESC, i.id DESC",
+  oldest: "i.created_at ASC, i.id ASC",
+  nobarcode: "(i.barcode IS NULL) DESC, i.name ASC, i.id ASC",
+};
+const DEFAULT_SORT = "name";
 
 type Item = {
   id: number;
@@ -34,18 +46,32 @@ function formatDate(date: string) {
 }
 
 type PageProps = {
-  searchParams: Promise<{ q?: string; nobarcode?: string; noimage?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    nobarcode?: string;
+    noimage?: string;
+    sort?: string;
+  }>;
 };
 
 export default async function ItemListPage({ searchParams }: PageProps) {
   const session = await auth();
   if (!session) redirect("/login");
 
-  const { q: qParam, nobarcode: nbParam, noimage: niParam } = await searchParams;
+  const {
+    q: qParam,
+    nobarcode: nbParam,
+    noimage: niParam,
+    sort: sortParam,
+  } = await searchParams;
   const q = (qParam ?? "").trim();
   const noBarcode = nbParam === "1";
   const noImage = niParam === "1";
   const isFiltered = q !== "" || noBarcode || noImage;
+
+  // 정렬: 화이트리스트에 없으면 기본(이름순)으로
+  const sort = sortParam && SORT_OPTIONS[sortParam] ? sortParam : DEFAULT_SORT;
+  const orderBy = SORT_OPTIONS[sort];
 
   // 동적 WHERE 구성 (검색어 + 바코드없음 + 이미지없음)
   const conditions: string[] = [];
@@ -69,7 +95,7 @@ export default async function ItemListPage({ searchParams }: PageProps) {
      FROM items i
      LEFT JOIN users u ON i.created_by = u.id
      ${where}
-     ORDER BY i.created_at DESC`,
+     ORDER BY ${orderBy}`,
     params
   );
 
@@ -133,6 +159,7 @@ export default async function ItemListPage({ searchParams }: PageProps) {
           />
           이미지 없음
         </label>
+        <SortSelect value={sort} />
         <button
           type="submit"
           className="px-4 py-2 border border-zinc-300 rounded-lg text-sm hover:bg-zinc-50 transition"
