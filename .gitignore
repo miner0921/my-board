@@ -39,6 +39,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# 로컬 데이터 정리용 일회성 스크립트 (테스트 데이터 비우기 등) — 공유 안 함
+/scripts
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
