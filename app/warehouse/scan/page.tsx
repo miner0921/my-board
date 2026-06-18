@@ -7,6 +7,7 @@ import PartialCompleteModal from "./PartialCompleteModal";
 import CancelInvoiceModal from "./CancelInvoiceModal";
 import OverQuantityModal from "./OverQuantityModal";
 import OrderText from "./OrderText";
+import InvoiceNotice from "./InvoiceNotice";
 import ScanItemCard from "./ScanItemCard";
 import QuantityModal from "./QuantityModal";
 import ExcludeItemModal from "./ExcludeItemModal";
@@ -38,6 +39,8 @@ type InvoicePayload = {
   recipient_address: string | null;
   total_qty: number;
   scanned_qty: number;
+  admin_memo: string | null;
+  reopen_reason: string | null;
 };
 
 type ItemPayload = {
@@ -978,6 +981,16 @@ export default function ScanPage() {
             </div>
           )}
         </div>
+
+        {/* 송장 안내(관리자→작업자) — 재개 사유 + 메모. 있을 때만. */}
+        {invoice && (
+          <div className="mt-2">
+            <InvoiceNotice
+              reopenReason={invoice.reopen_reason}
+              adminMemo={invoice.admin_memo}
+            />
+          </div>
+        )}
 
         {/* 전체 상품 — 상단 박스와 함께 sticky 고정. 길면 내부 스크롤. */}
         {invoice && (

@@ -72,13 +72,13 @@ export async function POST(request: Request, { params }: RouteContext) {
         return { kind: "not_completed" as const };
       }
 
-      // 재개 이력 기록 — 이전 상태 모두 캡처
+      // 재개 이력 기록 — 이전 상태 모두 캡처. 수동(관리자) 재개라 is_manual=true.
       await client.query(
         `INSERT INTO invoice_reopens
-           (invoice_id, reopened_by, reason,
+           (invoice_id, reopened_by, reason, is_manual,
             prev_status, prev_completion_reason, prev_completion_note,
             prev_completed_at, prev_completed_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         VALUES ($1, $2, $3, true, $4, $5, $6, $7, $8)`,
         [
           invoiceId,
           userId,

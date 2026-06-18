@@ -699,10 +699,13 @@ async function loadInvoiceFull(invoiceId: number): Promise<{
     query(
       `SELECT
          i.id, i.invoice_no, i.order_no, i.status,
-         i.customer_type, i.created_at, i.raw_product_name,
+         i.customer_type, i.created_at, i.raw_product_name, i.admin_memo,
          i.recipient_name, i.recipient_phone, i.recipient_address,
          COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
-         COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
+         COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty,
+         (SELECT r.reason FROM invoice_reopens r
+           WHERE r.invoice_id = i.id AND r.is_manual AND r.reason IS NOT NULL
+           ORDER BY r.reopened_at DESC LIMIT 1)    AS reopen_reason
        FROM invoices i
        LEFT JOIN invoice_items ii
          ON ii.invoice_id = i.id AND ii.excluded_at IS NULL
@@ -753,6 +756,8 @@ async function loadInvoiceFull(invoiceId: number): Promise<{
       recipient_address: raw.recipient_address,
       total_qty: raw.total_qty,
       scanned_qty: raw.scanned_qty,
+      admin_memo: raw.admin_memo,
+      reopen_reason: raw.reopen_reason,
     },
     items: itemsRes.rows,
     rawLines,

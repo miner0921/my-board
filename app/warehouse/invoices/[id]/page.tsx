@@ -7,6 +7,7 @@ import ReopenButton from "./ReopenButton";
 import RestoreItemButton from "./RestoreItemButton";
 import ExcludeItemButton from "./ExcludeItemButton";
 import DeleteInvoiceButton from "./DeleteInvoiceButton";
+import InvoiceMemoEditor from "./InvoiceMemoEditor";
 import ScanLogTimeline, { type ScanLog } from "./ScanLogTimeline";
 import InvoiceItemCard from "../../_components/InvoiceItemCard";
 
@@ -22,6 +23,7 @@ type Invoice = {
   delivery_note: string | null;
   sender_name: string | null;
   raw_product_name: string | null;
+  admin_memo: string | null;
   customer_type: string | null;
   created_at: string;
   scan_started_at: string | null;
@@ -153,7 +155,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
          i.id, i.invoice_no, i.order_no, i.status,
          i.recipient_name, i.recipient_phone, i.recipient_address,
          i.recipient_postal_code, i.delivery_note, i.sender_name,
-         i.raw_product_name, i.customer_type,
+         i.raw_product_name, i.admin_memo, i.customer_type,
          i.created_at, i.scan_started_at, i.completed_at,
          i.completion_reason, i.completion_note,
          uc.nickname AS created_by_name,
@@ -466,6 +468,25 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
             )}
           </dl>
         </div>
+
+        {/* 관리자 메모 — 관리자는 편집, 작업자는(메모 있으면) 읽기. 검수 화면에도 표시됨. */}
+        {isAdmin ? (
+          <InvoiceMemoEditor
+            invoiceId={invoice.id}
+            initialMemo={invoice.admin_memo}
+          />
+        ) : (
+          invoice.admin_memo && (
+            <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
+              <p className="text-xs font-medium text-amber-700 mb-1">
+                관리자 메모
+              </p>
+              <p className="text-sm text-amber-900 whitespace-pre-wrap break-words">
+                {invoice.admin_memo}
+              </p>
+            </div>
+          )
+        )}
       </article>
 
       {/* 품목 목록 */}
