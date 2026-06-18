@@ -10,7 +10,7 @@ import {
   type InvoiceRow,
 } from "@/lib/parse-excel";
 import { parseProductName } from "@/lib/parse-product";
-import { buildItemIndex } from "@/lib/resolve-item";
+import { loadItemIndex } from "@/lib/resolve-item";
 
 // POST: 발주서/송장 파일 두 개 받아서 분석 결과만 반환 (저장 X)
 // 실제 저장은 /confirm에서 같은 파일을 다시 받아 트랜잭션으로 처리.
@@ -104,11 +104,8 @@ export async function POST(request: Request) {
       if (!usedOrderKeys.has(key)) onlyInOrder.push(...rows);
     }
 
-    // 기존 items 로드 → 정규화 품명 인덱스 (매칭 단일 지점)
-    const existing = await query(
-      "SELECT id, name FROM items WHERE deleted_at IS NULL"
-    );
-    const existingNormalized = buildItemIndex(existing.rows);
+    // 기존 items + 별칭 로드 → 정규화 품명 인덱스 (매칭 단일 지점, 별칭 인식)
+    const existingNormalized = await loadItemIndex(query);
 
     // 매칭된 송장의 상품명 파싱 + 새 품목 식별
     const allNormalized = new Set<string>();

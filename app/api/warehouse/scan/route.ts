@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { query, withTransaction } from "@/lib/db";
 import { auth } from "@/auth";
 import { logAccess } from "@/lib/audit";
+import { parseProductName } from "@/lib/parse-product";
+import { loadItemIndex } from "@/lib/resolve-item";
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/warehouse/scan
@@ -137,6 +139,7 @@ export async function POST(request: Request) {
         type: "invoice_start",
         invoice: startPayload.invoice,
         items: startPayload.items,
+        rawLines: startPayload.rawLines,
       });
     }
 
@@ -682,17 +685,21 @@ export async function POST(request: Request) {
   }
 }
 
-// invoice_start 응답용 — 송장 핵심 정보 + 품목 목록만.
+// invoice_start 응답용 — 송장 핵심 정보 + 품목 목록 + 원문 라인.
 // 검수 화면은 바코드 작업이라 수령인 정보는 보내지 않는다.
+// rawLines: "전체 상품" 표시용 — 송장 원문(raw_product_name)을 파싱한 라인 그대로.
+//   별칭으로 매칭이 합쳐져도 원문 라인은 분리 유지. 각 라인에 매핑 item_id를 붙여
+//   완료/제외 상태는 클라이언트의 live items(품목 단위)에서 끌어온다.
 async function loadInvoiceFull(invoiceId: number): Promise<{
   invoice: Record<string, unknown>;
   items: Array<Record<string, unknown>>;
+  rawLines: Array<{ rawName: string; qty: number; item_id: number | null }>;
 } | null> {
   const [invRes, itemsRes] = await Promise.all([
     query(
       `SELECT
          i.id, i.invoice_no, i.order_no, i.status,
-         i.customer_type, i.created_at,
+         i.customer_type, i.created_at, i.raw_product_name,
          i.recipient_name, i.recipient_phone, i.recipient_address,
          COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
          COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
@@ -719,6 +726,21 @@ async function loadInvoiceFull(invoiceId: number): Promise<{
   ]);
   if (invRes.rows.length === 0) return null;
   const raw = invRes.rows[0];
+
+  // 원문 라인 분해 — 송장 원문을 파싱해 라인별로(별칭 합산 전) 유지.
+  // 각 라인의 정규화 품명을 별칭 인덱스로 item_id에 역매핑(매칭과 동일 규칙).
+  const rawText = (raw.raw_product_name as string | null) ?? "";
+  let rawLines: Array<{ rawName: string; qty: number; item_id: number | null }> =
+    [];
+  if (rawText.trim() !== "") {
+    const index = await loadItemIndex(query);
+    rawLines = parseProductName(rawText).items.map((it) => ({
+      rawName: it.rawName,
+      qty: it.qty,
+      item_id: index.get(it.normalizedName) ?? null,
+    }));
+  }
+
   return {
     invoice: {
       id: raw.id,
@@ -733,5 +755,6 @@ async function loadInvoiceFull(invoiceId: number): Promise<{
       scanned_qty: raw.scanned_qty,
     },
     items: itemsRes.rows,
+    rawLines,
   };
 }

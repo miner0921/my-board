@@ -189,7 +189,7 @@ export default async function ItemListPage({ searchParams }: PageProps) {
           type="text"
           name="q"
           defaultValue={q}
-          placeholder="품목명 또는 바코드로 검색"
+          placeholder="품목명·바코드·품목코드로 검색"
           className="flex-1 min-w-[200px] px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
         />
         <label className="inline-flex items-center gap-1.5 px-3 py-2 border border-zinc-300 rounded-lg text-sm cursor-pointer hover:bg-zinc-50 select-none">
@@ -318,7 +318,7 @@ export default async function ItemListPage({ searchParams }: PageProps) {
                     {/* 활성 보기에서만 수정/삭제 버튼 (숨김 보기는 복구 바로 처리) */}
                     {!viewDeleted && canEdit && (
                       <div className="flex gap-1 mt-2">
-                        <EditItemButton itemId={item.id} />
+                        <EditItemButton itemId={item.id} isAdmin={isAdmin} />
                         {isAdmin && <DeleteButton itemId={item.id} />}
                       </div>
                     )}

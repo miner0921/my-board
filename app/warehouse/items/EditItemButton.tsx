@@ -7,7 +7,13 @@ import ItemForm from "./ItemForm";
 
 // 품목 카드의 "수정" — 페이지 이동 없이 모달로.
 // 모달이 열릴 때 ItemForm(edit)이 마운트되며 GET 으로 최신값을 불러온다.
-export default function EditItemButton({ itemId }: { itemId: number }) {
+export default function EditItemButton({
+  itemId,
+  isAdmin = false,
+}: {
+  itemId: number;
+  isAdmin?: boolean;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
@@ -25,6 +31,7 @@ export default function EditItemButton({ itemId }: { itemId: number }) {
         <ItemForm
           mode="edit"
           itemId={itemId}
+          isAdmin={isAdmin}
           onSuccess={() => {
             setOpen(false);
             router.refresh(); // 목록만 갱신 (검색·정렬 URL 유지 → 1번 문제 해결)

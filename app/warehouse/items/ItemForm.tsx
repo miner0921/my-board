@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { splitProductName, buildItemName } from "@/lib/product-name";
+import { itemMatchKey } from "@/lib/resolve-item";
+
+type Alias = { id: number; alias_name: string; normalized_alias: string };
 
 // ─────────────────────────────────────────────────────────────
 // 품목 등록/수정 공용 폼.
@@ -12,12 +15,19 @@ import { splitProductName, buildItemName } from "@/lib/product-name";
 // ─────────────────────────────────────────────────────────────
 
 type Props =
-  | { mode: "create"; onSuccess: () => void; onCancel: () => void }
-  | { mode: "edit"; itemId: number; onSuccess: () => void; onCancel: () => void };
+  | { mode: "create"; isAdmin?: boolean; onSuccess: () => void; onCancel: () => void }
+  | {
+      mode: "edit";
+      itemId: number;
+      isAdmin?: boolean;
+      onSuccess: () => void;
+      onCancel: () => void;
+    };
 
 export default function ItemForm(props: Props) {
   const isEdit = props.mode === "edit";
   const editItemId = props.mode === "edit" ? props.itemId : null;
+  const isAdmin = props.isAdmin ?? false;
 
   const [productCode, setProductCode] = useState("");
   const [category, setCategory] = useState(""); // 구분
@@ -27,6 +37,12 @@ export default function ItemForm(props: Props) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(isEdit);
+
+  // 별칭(같은 취급 품명) — edit + 관리자에서만 사용
+  const [aliases, setAliases] = useState<Alias[]>([]);
+  const [newAlias, setNewAlias] = useState("");
+  const [aliasError, setAliasError] = useState("");
+  const [aliasBusy, setAliasBusy] = useState(false);
 
   // 이미지 상태
   const [hasExistingImage, setHasExistingImage] = useState(false);
@@ -65,6 +81,7 @@ export default function ItemForm(props: Props) {
         }
         setBarcode(data.item.barcode ?? "");
         setScanExempt(!!data.item.scan_exempt);
+        setAliases(data.aliases ?? []);
         setHasExistingImage(!!data.item.has_image);
         setExistingImageStamp(new Date(data.item.updated_at).getTime());
       } catch (err) {
@@ -126,6 +143,52 @@ export default function ItemForm(props: Props) {
   const handleRemoveExisting = () => {
     setRemoveExisting(true);
     handleClearNew();
+  };
+
+  const handleAddAlias = async () => {
+    const alias = newAlias.trim();
+    if (!alias || editItemId === null) return;
+    setAliasError("");
+    setAliasBusy(true);
+    try {
+      const res = await fetch(`/api/warehouse/items/${editItemId}/aliases`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alias }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAliasError(data.error || "별칭 추가에 실패했습니다.");
+        return;
+      }
+      setAliases((prev) => [...prev, data.alias]);
+      setNewAlias("");
+    } catch (err) {
+      console.error(err);
+      setAliasError("네트워크 오류가 발생했습니다.");
+    } finally {
+      setAliasBusy(false);
+    }
+  };
+
+  const handleDeleteAlias = async (aliasId: number) => {
+    if (editItemId === null) return;
+    setAliasError("");
+    try {
+      const res = await fetch(
+        `/api/warehouse/items/${editItemId}/aliases/${aliasId}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setAliasError(data.error || "별칭 삭제에 실패했습니다.");
+        return;
+      }
+      setAliases((prev) => prev.filter((a) => a.id !== aliasId));
+    } catch (err) {
+      console.error(err);
+      setAliasError("네트워크 오류가 발생했습니다.");
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -263,6 +326,79 @@ export default function ItemForm(props: Props) {
           </span>
         </span>
       </label>
+
+      {/* 별칭(같은 취급 품명) — 수정 + 관리자만 */}
+      {isEdit && isAdmin && (
+        <div className="border-t border-zinc-100 pt-4">
+          <label className="block text-sm font-medium text-zinc-700 mb-1">
+            같은 취급 품명{" "}
+            <span className="text-zinc-400 text-xs">(별칭 · 송장 매칭용)</span>
+          </label>
+          <p className="text-xs text-zinc-400 mb-2">
+            송장에 이 품목의 변형 품명이 와도 같은 품목으로 인식합니다. 정규화하면
+            품목 품명과 같아지는 변형, 다른 품목이 쓰는 품명은 등록할 수 없습니다.
+          </p>
+
+          {aliases.length > 0 && (
+            <ul className="flex flex-wrap gap-1.5 mb-2">
+              {aliases.map((a) => (
+                <li
+                  key={a.id}
+                  className="inline-flex items-center gap-1 pl-2 pr-1 py-1 bg-zinc-100 rounded text-xs text-zinc-700"
+                >
+                  <span title={`매칭 키: ${a.normalized_alias}`}>
+                    {a.alias_name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteAlias(a.id)}
+                    className="text-zinc-400 hover:text-red-600 leading-none px-1"
+                    aria-label="별칭 삭제"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newAlias}
+              onChange={(e) => setNewAlias(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleAddAlias();
+                }
+              }}
+              placeholder="예: 말차1키로"
+              maxLength={200}
+              className="flex-1 px-3 py-2 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+            />
+            <button
+              type="button"
+              onClick={handleAddAlias}
+              disabled={aliasBusy || !newAlias.trim()}
+              className="px-4 py-2 border border-zinc-300 rounded-lg text-sm hover:bg-zinc-50 transition disabled:opacity-40"
+            >
+              {aliasBusy ? "추가 중..." : "추가"}
+            </button>
+          </div>
+          {newAlias.trim() && (
+            <p className="text-xs text-zinc-400 mt-1">
+              매칭 키:{" "}
+              <span className="font-medium text-zinc-600">
+                {itemMatchKey(newAlias) || "(빈 값)"}
+              </span>
+            </p>
+          )}
+          {aliasError && (
+            <p className="text-xs text-red-600 mt-1">{aliasError}</p>
+          )}
+        </div>
+      )}
 
       {/* 이미지 (선택) */}
       <div>

@@ -54,6 +54,14 @@ type ItemPayload = {
   scan_exempt?: boolean;
 };
 
+// "전체 상품"(OrderText)용 송장 원문 라인. 별칭으로 합쳐지기 전 원문 그대로.
+// item_id 로 live items 의 완료/제외 상태를 끌어온다.
+type RawLine = {
+  rawName: string;
+  qty: number;
+  item_id: number | null;
+};
+
 type FlashKind = "ok" | "error" | "complete" | "partial" | null;
 
 type WrongItemState = {
@@ -118,6 +126,7 @@ const REASON_LABEL: Record<string, string> = {
 export default function ScanPage() {
   const [invoice, setInvoice] = useState<InvoicePayload | null>(null);
   const [items, setItems] = useState<ItemPayload[]>([]);
+  const [rawLines, setRawLines] = useState<RawLine[]>([]);
   const [input, setInput] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
@@ -296,6 +305,7 @@ export default function ScanPage() {
         type: "invoice_start";
         invoice: InvoicePayload;
         items: ItemPayload[];
+        rawLines: RawLine[];
       }
     | {
         type: "invoice_change_pending";
@@ -394,6 +404,7 @@ export default function ScanPage() {
       case "invoice_start": {
         setInvoice(data.invoice);
         setItems(data.items);
+        setRawLines(data.rawLines ?? []);
         setLastScannedId(null);
         setCompleteBanner(null); // 새 송장 진입 → 이전 완료 배너 해제
         setStatusKind("ok");
@@ -603,6 +614,7 @@ export default function ScanPage() {
     setCancelOpen(false);
     setInvoice(null);
     setItems([]);
+    setRawLines([]);
     setLastScannedId(null);
     setCompleteBanner(null);
     setStatusKind("info");
@@ -970,7 +982,7 @@ export default function ScanPage() {
         {/* 전체 상품 — 상단 박스와 함께 sticky 고정. 길면 내부 스크롤. */}
         {invoice && (
           <div className="mt-2">
-            <OrderText items={items} />
+            <OrderText items={items} rawLines={rawLines} />
           </div>
         )}
       </div>

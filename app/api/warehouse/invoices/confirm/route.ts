@@ -11,7 +11,7 @@ import {
   type InvoiceRow,
 } from "@/lib/parse-excel";
 import { parseProductName } from "@/lib/parse-product";
-import { buildItemIndex } from "@/lib/resolve-item";
+import { loadItemIndex } from "@/lib/resolve-item";
 import { isScanExemptName } from "@/lib/scan-exempt";
 import { logAccess } from "@/lib/audit";
 
@@ -89,11 +89,8 @@ export async function POST(request: Request) {
     };
     try {
       summary = await withTransaction(async (client) => {
-        // 1. 기존 items → 정규화 품명 인덱스 (매칭 단일 지점)
-        const existing = await client.query(
-          "SELECT id, name FROM items WHERE deleted_at IS NULL"
-        );
-        const itemByNormalized = buildItemIndex(existing.rows);
+        // 1. 기존 items + 별칭 → 정규화 품명 인덱스 (매칭 단일 지점, 별칭 인식)
+        const itemByNormalized = await loadItemIndex((t) => client.query(t));
 
         // 2. 새 품목 식별 (전체 송장 순회)
         const newItems = new Set<string>();

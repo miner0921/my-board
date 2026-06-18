@@ -43,6 +43,15 @@ export async function GET(request: Request, { params }: RouteContext) {
       );
     }
 
+    // 별칭(같은 취급 품명) 목록 — 수정 모달 표시용
+    const aliasRes = await query(
+      `SELECT id, alias_name, normalized_alias
+         FROM item_aliases
+        WHERE item_id = $1
+        ORDER BY id`,
+      [id]
+    );
+
     await logAccess({
       session,
       action: "item.read",
@@ -51,7 +60,7 @@ export async function GET(request: Request, { params }: RouteContext) {
       request,
     });
 
-    return NextResponse.json({ item: result.rows[0] });
+    return NextResponse.json({ item: result.rows[0], aliases: aliasRes.rows });
   } catch (error) {
     console.error("품목 조회 에러:", error);
     return NextResponse.json(
