@@ -61,6 +61,13 @@
 - **재개 사유**: 수동 재개 시 관리자가 입력한 사유. 스캔에는 **수동 재개분만** 표시한다 — `invoice_reopens.is_manual=true`(수동 재개 route만 true, 자동 재개는 false)인 최신 행의 `reason`. 자동 재개 고정 문구('…자동 재개')는 노이즈라 제외.
 - 스캔 표시 데이터는 `loadInvoiceFull`이 `invoice_start` 응답에 `admin_memo`/`reopen_reason`으로 실어 보냄.
 
+## 현장 추가 (검수 중 송장에 품목 추가)
+검수 중 송장에 없는 품목을 추가하는 두 경로. 둘 다 `invoice_items.is_added_on_scan=TRUE`, 완료 송장이면 자동 재개. 권한: 로그인 작업자.
+
+- **바코드 발**: 송장에 없는 바코드를 `force`로 스캔 → 새 행 `quantity=1, scanned_count=1`(찍는 행위=1개 챙김). `POST /api/warehouse/scan`.
+- **검색 발(바코드 없는 품목용)**: 스캔 화면 "품목 추가" → 품명 검색 → `POST /api/warehouse/scan/add` → 새 행 `quantity=1, scanned_count=0`. 추가 후 **수동 챙김**(`/scan/manual`)으로 수량 확인(기존 흐름 연결). 바코드 없는 품목은 추가 직후 수량 모달 자동 오픈. 모든 품목 추가 가능(바코드 유무 무관). 이미 활성 행이면 중복 추가 안 함, 제외된 행이면 복구.
+- 추가 행은 `quantity=1` 고정이라 수동 챙김으로 N개 set 시 `N/1`로 보일 수 있음(현장 추가분 성격 — force-add와 동일 모델).
+
 ## 사용자 권한
 - 모든 사용자가 로그인만 하면 모든 기능 사용 가능
 - 권한 분리(admin/worker) 없음

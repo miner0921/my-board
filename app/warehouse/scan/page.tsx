@@ -8,6 +8,7 @@ import CancelInvoiceModal from "./CancelInvoiceModal";
 import OverQuantityModal from "./OverQuantityModal";
 import OrderText from "./OrderText";
 import InvoiceNotice from "./InvoiceNotice";
+import AddItemModal, { type AddResult } from "./AddItemModal";
 import ScanItemCard from "./ScanItemCard";
 import QuantityModal from "./QuantityModal";
 import ExcludeItemModal from "./ExcludeItemModal";
@@ -152,6 +153,8 @@ export default function ScanPage() {
 
   // 수동 챙김(수량 입력) 대상 품목
   const [manualTarget, setManualTarget] = useState<ItemPayload | null>(null);
+  // 품목 검색 추가 모달
+  const [addModalOpen, setAddModalOpen] = useState(false);
   // 제외(빼기) 대상 품목
   const [excludeTarget, setExcludeTarget] = useState<ItemPayload | null>(null);
   // 완료 카드 클릭 시 뜨는 메뉴(수량 수정 / 취소) 대상 품목
@@ -168,7 +171,8 @@ export default function ScanPage() {
     cancelOpen ||
     manualTarget !== null ||
     excludeTarget !== null ||
-    menuTarget !== null;
+    menuTarget !== null ||
+    addModalOpen;
 
   // 송장이 완료/부분완료 상태면 "세션 끝" — 품목 스캔은 서버에서 자연스럽게
   // scan_no_invoice로 처리되도록 current_invoice_id=null로 보냄.
@@ -768,6 +772,51 @@ export default function ScanPage() {
     }
   };
 
+  // 품목 검색 추가 결과 처리 — 카드 upsert + 송장 합계 갱신.
+  // 바코드 없는 품목을 새로 추가/복구하면 곧바로 수량(수동 챙김) 모달을 연다.
+  const handleItemAdded = (result: AddResult) => {
+    const it = result.item;
+    const card: ItemPayload = {
+      invoice_item_id: it.invoice_item_id,
+      item_id: it.item_id,
+      quantity: it.quantity,
+      scanned_count: it.scanned_count,
+      display_name: it.display_name,
+      name: it.name,
+      barcode: it.barcode,
+      has_image: it.has_image,
+      updated_at: it.updated_at,
+      is_added_on_scan: it.is_added_on_scan,
+      scan_exempt: it.scan_exempt,
+    };
+    upsertItem(card);
+    setInvoice((prev) =>
+      prev
+        ? {
+            ...prev,
+            status: result.invoice.status,
+            scanned_qty: result.invoice.scanned_qty,
+            total_qty: result.invoice.total_qty,
+          }
+        : prev
+    );
+    if (result.outcome !== "already_present") setCompleteBanner(null);
+
+    const label =
+      result.outcome === "already_present"
+        ? "이미 송장에 있음"
+        : result.outcome === "restored"
+          ? "품목 복구"
+          : "현장 추가";
+    setStatusKind("ok");
+    setStatusMsg(`${it.name} ${label}`);
+
+    // 바코드 없는 품목을 새로 넣었으면 수량 입력(수동 챙김)으로 바로 연결
+    if (!it.barcode && result.outcome !== "already_present") {
+      setManualTarget(card);
+    }
+  };
+
   // 수동 챙김 확정 (바코드 없는 품목 + 동봉)
   const handleManualPick = async (count: number) => {
     const target = manualTarget;
@@ -1047,14 +1096,32 @@ export default function ScanPage() {
       {/* 제품 카드 — "남은 상품"(위) / "완료된 상품"(아래) 두 구역 */}
       {invoice && items.length === 0 && (
         <div className="text-center py-8 border border-dashed border-zinc-300 rounded-lg text-zinc-500 text-sm">
-          연결된 품목이 없습니다.
+          <p>연결된 품목이 없습니다.</p>
+          <button
+            type="button"
+            onClick={() => setAddModalOpen(true)}
+            disabled={modalOpen}
+            className="mt-3 text-xs px-3 py-1.5 border border-zinc-300 rounded-lg hover:bg-zinc-50 transition disabled:opacity-40"
+          >
+            + 품목 추가
+          </button>
         </div>
       )}
 
       {/* 남은 상품 */}
       {invoice && items.length > 0 && (
         <>
-          <p className="text-[11px] text-zinc-500 mb-1.5">남은 상품</p>
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-[11px] text-zinc-500">남은 상품</p>
+            <button
+              type="button"
+              onClick={() => setAddModalOpen(true)}
+              disabled={modalOpen}
+              className="text-xs px-2.5 py-1 border border-zinc-300 rounded-lg hover:bg-zinc-50 transition disabled:opacity-40"
+            >
+              + 품목 추가
+            </button>
+          </div>
           {remainingItems.length === 0 ? (
             <div className="text-center py-6 border border-dashed border-green-300 bg-green-50 rounded-lg text-green-700 text-sm">
               남은 상품이 없습니다 — 모든 품목을 확인했습니다.
@@ -1227,6 +1294,14 @@ export default function ScanPage() {
             setExcludeTarget(t);
           }}
           onClose={() => setMenuTarget(null)}
+        />
+      )}
+      {invoice && addModalOpen && (
+        <AddItemModal
+          onClose={() => setAddModalOpen(false)}
+          invoiceId={invoice.id}
+          existingItemIds={new Set(items.map((it) => it.item_id))}
+          onAdded={handleItemAdded}
         />
       )}
     </div>
