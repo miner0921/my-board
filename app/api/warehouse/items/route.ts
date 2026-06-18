@@ -3,14 +3,7 @@ import { query } from "@/lib/db";
 import { auth } from "@/auth";
 import { readUploadedImage } from "@/lib/upload";
 import { logAccess } from "@/lib/audit";
-import {
-  composeProductName,
-  MAX_PRODUCT_CODE_LEN,
-  MAX_CATEGORY_LEN,
-  MAX_KIND_LEN,
-  MAX_NAME_LEN,
-  MAX_BARCODE_LEN,
-} from "@/lib/product-name";
+import { buildItemFields } from "@/lib/product-name";
 
 // GET: 품목 목록 (로그인 필수)
 // ?q= 가 있으면 품목코드/품명/바코드 부분일치 검색
@@ -71,8 +64,8 @@ export async function GET(request: Request) {
 
 // POST: 새 품목 등록 (로그인 필수)
 // multipart/form-data: product_code(선택), category(구분), kind(종류, 필수), barcode(선택), image(선택)
-// name(품명)은 composeProductName(구분, 종류)로 서버에서 조합 — 검수 매칭 키.
-// barcode 빈 문자열은 NULL 로 저장.
+// name(품명)은 buildItemName(구분, 종류) = 정규화 품명으로 서버에서 조합 — 검수 매칭 키.
+// 구분/종류는 입력 원본 보존. product_code·barcode 빈 문자열은 NULL 로 저장.
 export async function POST(request: Request) {
   try {
     const session = await auth();
@@ -84,55 +77,20 @@ export async function POST(request: Request) {
     }
 
     const formData = await request.formData();
-    const productCodeRaw = String(formData.get("product_code") ?? "").trim();
-    const category = String(formData.get("category") ?? "").trim();
-    const kind = String(formData.get("kind") ?? "").trim();
-    const barcodeRaw = String(formData.get("barcode") ?? "").trim();
     const image = formData.get("image");
     const scanExempt = formData.get("scan_exempt") === "1";
 
-    // name/category/kind 는 항상 같이 기록 (드리프트 방지) — name 은 조합으로만 생성
-    const name = composeProductName(category, kind);
-
-    if (!kind) {
-      return NextResponse.json(
-        { error: "종류(품명)를 입력해주세요." },
-        { status: 400 }
-      );
+    // 검증 + 정규화 품명 조합을 단일 헬퍼로 (엑셀·개별 일관) — name 은 정규화형
+    const fields = buildItemFields({
+      productCodeRaw: String(formData.get("product_code") ?? ""),
+      category: String(formData.get("category") ?? ""),
+      kind: String(formData.get("kind") ?? ""),
+      barcodeRaw: String(formData.get("barcode") ?? ""),
+    });
+    if (!fields.ok) {
+      return NextResponse.json({ error: fields.error }, { status: 400 });
     }
-    if (productCodeRaw.length > MAX_PRODUCT_CODE_LEN) {
-      return NextResponse.json(
-        { error: "품목코드는 100자 이하여야 합니다." },
-        { status: 400 }
-      );
-    }
-    if (category.length > MAX_CATEGORY_LEN) {
-      return NextResponse.json(
-        { error: "구분은 100자 이하여야 합니다." },
-        { status: 400 }
-      );
-    }
-    if (kind.length > MAX_KIND_LEN) {
-      return NextResponse.json(
-        { error: "종류는 200자 이하여야 합니다." },
-        { status: 400 }
-      );
-    }
-    if (barcodeRaw.length > MAX_BARCODE_LEN) {
-      return NextResponse.json(
-        { error: "바코드는 100자 이하여야 합니다." },
-        { status: 400 }
-      );
-    }
-    if (name.length > MAX_NAME_LEN) {
-      return NextResponse.json(
-        { error: "구분+종류로 조합한 품명이 200자를 초과합니다." },
-        { status: 400 }
-      );
-    }
-
-    const productCode: string | null = productCodeRaw === "" ? null : productCodeRaw;
-    const barcode: string | null = barcodeRaw === "" ? null : barcodeRaw;
+    const { name, category, kind, productCode, barcode } = fields;
 
     let imageBuffer: Buffer | null = null;
     let imageMime: string | null = null;

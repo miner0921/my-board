@@ -4,6 +4,7 @@ import { withTransaction } from "@/lib/db";
 import { readUploadedSpreadsheet } from "@/lib/upload";
 import { parseItemsSheet } from "@/lib/parse-excel";
 import { classifyBulkItems } from "@/lib/bulk-items";
+import { buildItemIndex, itemMatchKey } from "@/lib/resolve-item";
 import { isScanExemptName } from "@/lib/scan-exempt";
 import { logAccess } from "@/lib/audit";
 
@@ -11,11 +12,11 @@ import { logAccess } from "@/lib/audit";
 // 미리보기 결과를 신뢰하지 않고 서버에서 같은 파일을 다시 파싱한다.
 //
 // 규칙:
-//   - 판단 기준 = 품목코드(product_code)
-//   - 같은 품목코드가 있으면 그 품목의 구분/종류/바코드/품명 갱신(update),
+//   - 판단 기준 = 정규화 품명(itemMatchKey, lib/resolve-item.ts)
+//   - 같은 정규화 품명이 있으면 그 품목에 품목코드/구분/종류/바코드 채움·갱신(update),
 //     없으면 새로 등록(create, is_auto_created=FALSE = 직접 등록)
-//   - 품목코드/종류 없는 행, 길이 초과 행은 건너뜀(skip)
-//   - name/category/kind 는 항상 같이 기록(parse 단계에서 composeProductName 적용됨)
+//   - 품명(종류) 없는 행, 길이 초과 행은 건너뜀(skip). 품목코드는 선택 속성.
+//   - name 은 정규화형(parse 단계 buildItemName)으로 저장 — 매칭 키와 동일
 export async function POST(request: Request) {
   try {
     const session = await auth();
@@ -50,24 +51,21 @@ export async function POST(request: Request) {
     }
 
     const result = await withTransaction(async (client) => {
-      // 기존 품목: 품목코드 → id 맵 (덮어쓰기 대상 찾기)
+      // 기존 품목: 정규화 품명 → id 인덱스 (덮어쓰기 대상 찾기)
       const existing = await client.query(
-        "SELECT id, product_code FROM items WHERE deleted_at IS NULL AND product_code IS NOT NULL"
+        "SELECT id, name FROM items WHERE deleted_at IS NULL"
       );
-      const idByCode = new Map<string, number>();
-      const known = new Set<string>();
-      for (const r of existing.rows) {
-        idByCode.set(r.product_code, r.id);
-        known.add(r.product_code);
-      }
+      const idByKey = buildItemIndex(existing.rows);
+      const known = new Set<string>(idByKey.keys());
 
-      // 미리보기와 동일한 분류 로직으로 행별 action 결정
+      // 미리보기와 동일한 분류 로직으로 행별 action 결정 (키 = 정규화 품명)
       const { rows: classified, counts } = classifyBulkItems(rows, known);
 
       let inserted = 0;
       let updated = 0;
       for (const row of classified) {
-        if (row.action === "skip" || !row.productCode) continue;
+        if (row.action === "skip") continue;
+        const key = itemMatchKey(row.name);
 
         if (row.action === "create") {
           const ins = await client.query(
@@ -85,19 +83,20 @@ export async function POST(request: Request) {
               isScanExemptName(row.name),
             ]
           );
-          idByCode.set(row.productCode, ins.rows[0].id);
+          idByKey.set(key, ins.rows[0].id);
           inserted++;
         } else {
-          // update: 같은 품목코드 품목의 구분/종류/바코드/품명 갱신
-          // (name/category/kind 항상 같이 기록 — 드리프트 방지)
-          const id = idByCode.get(row.productCode);
+          // update: 같은 정규화 품명 품목에 품목코드/구분/종류/바코드 채움·갱신.
+          // name 도 정규화형으로 다시 기록(기존 비정규화 품명 자연 정리).
+          const id = idByKey.get(key);
           if (id === undefined) continue; // 이론상 없음 (방어)
           await client.query(
             `UPDATE items
-                SET barcode = $1, category = $2, kind = $3, name = $4,
-                    scan_exempt = $5, updated_at = CURRENT_TIMESTAMP
-              WHERE id = $6`,
+                SET product_code = $1, barcode = $2, category = $3, kind = $4,
+                    name = $5, scan_exempt = $6, updated_at = CURRENT_TIMESTAMP
+              WHERE id = $7`,
             [
+              row.productCode,
               row.barcode,
               row.category,
               row.kind,

@@ -31,6 +31,20 @@
 - **품목 매핑(InvoiceItem)**: 송장 안의 각 품목과 수량
 - **스캔 로그(ScanLog)**: 누가 언제 무엇을 스캔했는지 (감사 추적)
 
+## 품목 매칭 규칙 (정규화 품명 = 단일 키) ⭐
+출고/검수 전체에서 "같은 품목"을 가르는 기준은 **정규화 품명 하나**다. 품목코드·구분·종류·바코드는 품목의 *속성*일 뿐 매칭 키가 아니다.
+
+- **매칭 키 = `itemMatchKey(name)` (`lib/resolve-item.ts`)** = `normalizeProductName(name)`.
+  - 모든 조회(송장 confirm·preview, 대량등록 confirm·preview)는 `buildItemIndex(items)`(정규화 품명→id)를 거친다. 인라인으로 맵을 다시 만들지 말 것.
+  - **별칭(alias)은 `buildItemIndex` 안에서만 합친다** — 호출 측은 손대지 않는다(alias-ready).
+- **저장되는 `items.name`은 항상 정규화형** = `buildItemName(구분, 종류)`(`lib/product-name.ts`) = `normalizeProductName(composeProductName(구분, 종류))`.
+  - 불변식: `items.name === normalizeProductName(composeProductName(category, kind))`.
+  - 엑셀 대량등록·개별 등록(POST)·개별 수정(PUT) 모두 이 함수 하나로 name을 만든다(복붙 금지).
+  - 구분(category)/종류(kind)는 **입력 원본을 그대로 보존**(표시·재편집용). name만 정규화형.
+- **송장 원문은 보존**: `invoices.raw_product_name`, `invoice_items.display_name`은 건드리지 않는다. 검수 화면 원문 표기는 이 값을 쓴다.
+- **대량등록 판단 기준**: 정규화 품명. 같은 품명이면 그 품목(송장 자동생성 포함)에 품목코드·구분·종류·바코드를 채워 갱신, 없으면 신규. 품명이 다르면 새 품목(개명은 개별 수정으로).
+- ⚠️ 검수 매칭은 정규화 품명을 비교하므로 **매칭 *동작*은 함부로 바꾸지 말 것**. 정규화 규칙 변경은 `lib/normalize-product.ts` 한 곳에서만.
+
 ## 사용자 권한
 - 모든 사용자가 로그인만 하면 모든 기능 사용 가능
 - 권한 분리(admin/worker) 없음

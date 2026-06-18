@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { splitProductName } from "@/lib/product-name";
+import { splitProductName, buildItemName } from "@/lib/product-name";
 
 // ─────────────────────────────────────────────────────────────
 // 품목 등록/수정 공용 폼.
@@ -138,7 +138,7 @@ export default function ItemForm(props: Props) {
       formData.append("category", category);
       formData.append("kind", kind);
       formData.append("barcode", barcode); // 빈 문자열 OK (서버에서 NULL 변환)
-      // name(품명)은 서버에서 composeProductName(구분, 종류)로 조합 — 여기서 보내지 않음
+      // name(품명)은 서버에서 buildItemName(구분, 종류) = 정규화 품명으로 조합 — 여기서 보내지 않음
       formData.append("scan_exempt", scanExempt ? "1" : "");
       if (newImageFile) {
         formData.append("image", newImageFile);
@@ -220,12 +220,15 @@ export default function ItemForm(props: Props) {
           />
         </div>
       </div>
-      {/* 조합 품명 미리보기 — 저장될 실제 품명(검수 매칭 키) */}
+      {/* 조합 품명 미리보기 — 저장될 실제 품명(정규화형, 검수 매칭 키) */}
       <p className="text-xs text-zinc-500 -mt-1">
         저장 품명:{" "}
         <span className="font-medium text-zinc-700">
-          {category.trim() ? `(${category.trim()})` : ""}
-          {kind.trim() || <span className="text-zinc-300">(종류 입력)</span>}
+          {kind.trim() ? (
+            buildItemName(category, kind)
+          ) : (
+            <span className="text-zinc-300">(종류 입력)</span>
+          )}
         </span>
       </p>
 

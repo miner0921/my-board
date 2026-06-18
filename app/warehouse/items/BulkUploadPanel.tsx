@@ -6,7 +6,7 @@ import { Check, X, FileSpreadsheet } from "lucide-react";
 // ─────────────────────────────────────────────────────────────
 // 품목 대량 등록 패널 (파일 선택 → 미리보기 → 확정 → 결과).
 //   - 헤더: 품목코드 / 바코드 / 구분 / 종류 (.xlsx 또는 .csv, 19컬럼 중 4개만 사용)
-//   - 판단 기준은 품목코드. 같은 코드면 갱신, 없으면 신규.
+//   - 판단 기준은 품명(정규화). 같은 품명이면 갱신(코드·구분·종류·바코드 채움), 없으면 신규.
 //   - 성공 시 onSuccess() 호출 (부모가 목록 갱신).
 // ─────────────────────────────────────────────────────────────
 
@@ -156,8 +156,8 @@ export default function BulkUploadPanel({
       <p className="text-sm text-zinc-500 mb-4">
         엑셀(.xlsx) 또는 CSV 파일. 1행은 헤더, 2행부터 데이터. 헤더 이름으로{" "}
         <b>품목코드</b> / <b>바코드</b> / <b>구분</b> / <b>종류</b> 4개 열만 사용합니다(나머지 열 무시).
-        같은 <b>품목코드</b>가 이미 있으면 갱신하고, 없으면 새로 등록합니다. 품명은 “(구분)종류”로
-        저장됩니다. 바코드는 비어 있어도 됩니다.
+        같은 <b>품명</b>이 이미 있으면 그 품목에 품목코드·구분·종류·바코드를 채워 갱신하고, 없으면 새로
+        등록합니다. 품명은 “(구분)종류”를 정규화해 저장됩니다. 품목코드·바코드는 비어 있어도 됩니다.
       </p>
 
       {/* 파일 선택 */}
@@ -216,7 +216,7 @@ export default function BulkUploadPanel({
               건
             </li>
             <li>
-              바코드 덮어쓰기:{" "}
+              기존 품목 갱신:{" "}
               <span className="font-semibold text-amber-700">
                 {preview.counts.update}
               </span>
@@ -228,7 +228,7 @@ export default function BulkUploadPanel({
                 {preview.counts.skip}
               </span>
               건{" "}
-              <span className="text-xs text-zinc-400">(품목코드/종류 없음·길이 초과)</span>
+              <span className="text-xs text-zinc-400">(종류(품명) 없음·길이 초과)</span>
             </li>
             <li className="text-xs text-zinc-400">총 {preview.total}행</li>
           </ul>

@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { composeProductName } from "./product-name";
+import { buildItemName } from "./product-name";
 
 // 발주서 / 송장 엑셀 파싱.
 // 컬럼명은 실제 운영 파일 기준 (CLAUDE.md 도메인 설명 참고).
@@ -109,13 +109,14 @@ export function parseInvoiceSheet(buffer: Buffer): InvoiceRow[] {
 // ── 품목 대량 등록 (.xlsx / .csv) — SKU 마스터 양식 ──────────
 // 19개 컬럼 중 헤더 "이름"으로 4개만 사용(위치 인덱스 아님): 품목코드/바코드/구분/종류.
 // 첫 시트, 1행 헤더, 2행부터 데이터. 나머지 15개 컬럼은 무시.
-// name(품명)은 composeProductName(구분, 종류)로 조합 — 검수 매칭 키.
+// name(품명)은 buildItemName(구분, 종류) = 정규화 품명 — 검수 매칭 키.
+// 매칭/갱신 판단 기준은 품목코드가 아니라 이 정규화 품명(lib/resolve-item.ts).
 export type ItemUploadRow = {
   productCode: string | null;
   barcode: string | null;
   category: string; // 구분 (원본)
   kind: string; // 종류 (원본)
-  name: string; // "(구분)종류" 조합 품명
+  name: string; // 정규화 품명 (buildItemName) — 매칭 키
   rowNo: number; // 엑셀 행 번호 (헤더=1, 데이터 첫 행=2) — 미리보기 표시용
 };
 
@@ -139,7 +140,7 @@ export function parseItemsSheet(buffer: Buffer): ItemUploadRow[] {
       barcode: barcodeRaw === "" ? null : barcodeRaw,
       category,
       kind,
-      name: composeProductName(category, kind),
+      name: buildItemName(category, kind),
       rowNo: i + 2,
     };
   });

@@ -4,6 +4,7 @@ import { query } from "@/lib/db";
 import { readUploadedSpreadsheet } from "@/lib/upload";
 import { parseItemsSheet } from "@/lib/parse-excel";
 import { classifyBulkItems } from "@/lib/bulk-items";
+import { itemMatchKey } from "@/lib/resolve-item";
 
 // POST: 품목 대량 등록 파일(.xlsx/.csv) 분석만 (저장 X).
 // 실제 저장은 /api/warehouse/items/bulk 에서 같은 파일을 다시 받아 처리.
@@ -39,15 +40,15 @@ export async function POST(request: Request) {
       );
     }
 
-    // 기존 품목 품목코드 집합
+    // 기존 품목의 정규화 품명 집합 (매칭 키)
     const existing = await query(
-      "SELECT product_code FROM items WHERE deleted_at IS NULL AND product_code IS NOT NULL"
+      "SELECT name FROM items WHERE deleted_at IS NULL"
     );
-    const knownCodes = new Set<string>(
-      existing.rows.map((r) => r.product_code as string)
+    const knownKeys = new Set<string>(
+      existing.rows.map((r) => itemMatchKey(r.name as string))
     );
 
-    const { rows: classified, counts } = classifyBulkItems(rows, knownCodes);
+    const { rows: classified, counts } = classifyBulkItems(rows, knownKeys);
 
     return NextResponse.json({
       counts,
