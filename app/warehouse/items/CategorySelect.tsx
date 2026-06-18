@@ -1,6 +1,6 @@
 "use client";
 
-// 품목 카테고리 필터 드롭다운 (상품명 첫 괄호 = 카테고리).
+// 품목 카테고리 필터 드롭다운 (items.category = 엑셀 "구분" 컬럼 기준).
 // 기존 검색/필터 GET 폼 안에서 동작하며, 변경 시 폼을 즉시 제출.
 export default function CategorySelect({
   value,

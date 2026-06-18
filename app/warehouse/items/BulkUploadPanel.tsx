@@ -5,13 +5,16 @@ import { Check, X, FileSpreadsheet } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────
 // 품목 대량 등록 패널 (파일 선택 → 미리보기 → 확정 → 결과).
-//   - 헤더: 품목명 / 바코드 (.xlsx 또는 .csv)
-//   - 판단 기준은 품목명. 같은 품목명이면 바코드 덮어쓰기, 없으면 신규.
+//   - 헤더: 품목코드 / 바코드 / 구분 / 종류 (.xlsx 또는 .csv, 19컬럼 중 4개만 사용)
+//   - 판단 기준은 품목코드. 같은 코드면 갱신, 없으면 신규.
 //   - 성공 시 onSuccess() 호출 (부모가 목록 갱신).
 // ─────────────────────────────────────────────────────────────
 
 type PreviewRow = {
   rowNo: number;
+  productCode: string | null;
+  category: string;
+  kind: string;
   name: string;
   barcode: string | null;
   action: "create" | "update" | "skip";
@@ -29,7 +32,7 @@ type ResultData = { inserted: number; updated: number; skipped: number };
 
 const ACTION_BADGE: Record<PreviewRow["action"], { label: string; cls: string }> = {
   create: { label: "신규", cls: "bg-blue-50 text-blue-700" },
-  update: { label: "덮어쓰기", cls: "bg-amber-50 text-amber-700" },
+  update: { label: "갱신", cls: "bg-amber-50 text-amber-700" },
   skip: { label: "건너뜀", cls: "bg-zinc-100 text-zinc-500" },
 };
 
@@ -133,7 +136,7 @@ export default function BulkUploadPanel({
         </div>
         <ul className="space-y-1.5 text-sm text-zinc-700 mb-6">
           <li>· 신규 등록: <span className="font-semibold">{result.inserted}</span>건</li>
-          <li>· 바코드 덮어쓰기: <span className="font-semibold">{result.updated}</span>건</li>
+          <li>· 갱신(구분/종류/바코드): <span className="font-semibold">{result.updated}</span>건</li>
           <li>· 건너뜀: <span className="font-semibold">{result.skipped}</span>건</li>
         </ul>
         <div className="flex justify-end">
@@ -151,9 +154,10 @@ export default function BulkUploadPanel({
   return (
     <div>
       <p className="text-sm text-zinc-500 mb-4">
-        엑셀(.xlsx) 또는 CSV 파일. 1행은 헤더(<b>품목명</b> / <b>바코드</b>), 2행부터
-        데이터. 같은 품목명이 이미 있으면 바코드를 덮어쓰고, 없으면 새로 등록합니다.
-        바코드는 비어 있어도 됩니다.
+        엑셀(.xlsx) 또는 CSV 파일. 1행은 헤더, 2행부터 데이터. 헤더 이름으로{" "}
+        <b>품목코드</b> / <b>바코드</b> / <b>구분</b> / <b>종류</b> 4개 열만 사용합니다(나머지 열 무시).
+        같은 <b>품목코드</b>가 이미 있으면 갱신하고, 없으면 새로 등록합니다. 품명은 “(구분)종류”로
+        저장됩니다. 바코드는 비어 있어도 됩니다.
       </p>
 
       {/* 파일 선택 */}
@@ -224,16 +228,17 @@ export default function BulkUploadPanel({
                 {preview.counts.skip}
               </span>
               건{" "}
-              <span className="text-xs text-zinc-400">(품목명 없음/길이 초과)</span>
+              <span className="text-xs text-zinc-400">(품목코드/종류 없음·길이 초과)</span>
             </li>
             <li className="text-xs text-zinc-400">총 {preview.total}행</li>
           </ul>
 
           {/* 행별 상세 */}
           <div className="max-h-[300px] overflow-auto border border-zinc-200 rounded text-xs">
-            <div className="grid grid-cols-[3rem_1fr_8rem_5rem] gap-2 px-3 py-2 bg-zinc-50 border-b border-zinc-200 font-medium text-zinc-600 sticky top-0">
+            <div className="grid grid-cols-[2.5rem_6rem_1fr_6rem_4rem] gap-2 px-3 py-2 bg-zinc-50 border-b border-zinc-200 font-medium text-zinc-600 sticky top-0">
               <span>행</span>
-              <span>품목명</span>
+              <span>품목코드</span>
+              <span>품명 (구분)종류</span>
               <span>바코드</span>
               <span className="text-center">처리</span>
             </div>
@@ -242,11 +247,14 @@ export default function BulkUploadPanel({
               return (
                 <div
                   key={r.rowNo}
-                  className="grid grid-cols-[3rem_1fr_8rem_5rem] gap-2 px-3 py-1.5 border-b border-zinc-100 last:border-b-0 items-center"
+                  className="grid grid-cols-[2.5rem_6rem_1fr_6rem_4rem] gap-2 px-3 py-1.5 border-b border-zinc-100 last:border-b-0 items-center"
                 >
                   <span className="text-zinc-400">{r.rowNo}</span>
+                  <span className="font-mono text-zinc-500 truncate" title={r.productCode ?? ""}>
+                    {r.productCode ?? <span className="text-zinc-300">-</span>}
+                  </span>
                   <span className="truncate text-zinc-700" title={r.name}>
-                    {r.name || <span className="text-zinc-300">(빈 품목명)</span>}
+                    {r.name || <span className="text-zinc-300">(빈 품명)</span>}
                   </span>
                   <span className="font-mono text-zinc-500 truncate">
                     {r.barcode ?? <span className="text-zinc-300">-</span>}

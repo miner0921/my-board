@@ -3,7 +3,6 @@ import { auth } from "@/auth";
 import { query } from "@/lib/db";
 import { readUploadedSpreadsheet } from "@/lib/upload";
 import { parseItemsSheet } from "@/lib/parse-excel";
-import { normalizeProductName } from "@/lib/normalize-product";
 import { classifyBulkItems } from "@/lib/bulk-items";
 
 // POST: 품목 대량 등록 파일(.xlsx/.csv) 분석만 (저장 X).
@@ -35,20 +34,20 @@ export async function POST(request: Request) {
     } catch (e) {
       console.error("품목 엑셀 파싱 실패:", e);
       return NextResponse.json(
-        { error: "파일을 읽을 수 없습니다. 형식(품목명/바코드 2열)을 확인해주세요." },
+        { error: "파일을 읽을 수 없습니다. 형식(품목코드/바코드/구분/종류 헤더)을 확인해주세요." },
         { status: 400 }
       );
     }
 
-    // 기존 품목 정규화명 집합
+    // 기존 품목 품목코드 집합
     const existing = await query(
-      "SELECT name FROM items WHERE deleted_at IS NULL"
+      "SELECT product_code FROM items WHERE deleted_at IS NULL AND product_code IS NOT NULL"
     );
-    const knownNormalized = new Set<string>(
-      existing.rows.map((r) => normalizeProductName(r.name))
+    const knownCodes = new Set<string>(
+      existing.rows.map((r) => r.product_code as string)
     );
 
-    const { rows: classified, counts } = classifyBulkItems(rows, knownNormalized);
+    const { rows: classified, counts } = classifyBulkItems(rows, knownCodes);
 
     return NextResponse.json({
       counts,
@@ -56,6 +55,9 @@ export async function POST(request: Request) {
       // 미리보기 표시용 — 행 수가 많을 수 있어 최대 200행만 전송
       rows: classified.slice(0, 200).map((r) => ({
         rowNo: r.rowNo,
+        productCode: r.productCode,
+        category: r.category,
+        kind: r.kind,
         name: r.name,
         barcode: r.barcode,
         action: r.action,

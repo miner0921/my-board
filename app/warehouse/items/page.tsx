@@ -15,9 +15,6 @@ import {
   BulkCheckbox,
 } from "../_components/BulkSelect";
 
-// 상품명 맨 앞 괄호 = 카테고리. SQL 추출과 동일 의미.
-const CATEGORY_REGEX = "^\\(([^)]+)\\)";
-
 // 정렬 옵션 화이트리스트. key는 SortSelect의 <option value>와 일치.
 // orderBy는 고정 문자열만 사용 (사용자 입력을 SQL에 직접 넣지 않음).
 // 동률 시 i.id로 안정 정렬 (created_at은 대량 업로드 시 동일값 다수).
@@ -31,6 +28,9 @@ const DEFAULT_SORT = "name";
 
 type Item = {
   id: number;
+  product_code: string | null; // 자동 등록 품목은 NULL
+  category: string | null; // 구분
+  kind: string | null; // 종류
   barcode: string | null;  // 자동 등록 품목은 NULL 가능
   name: string;
   has_image: boolean;
@@ -103,25 +103,24 @@ export default async function ItemListPage({ searchParams }: PageProps) {
   if (q !== "") {
     params.push(`%${q}%`);
     conditions.push(
-      `(i.name ILIKE $${params.length} OR i.barcode ILIKE $${params.length})`
+      `(i.name ILIKE $${params.length} OR i.barcode ILIKE $${params.length} OR i.product_code ILIKE $${params.length})`
     );
   }
   if (noBarcode) conditions.push(`i.barcode IS NULL`);
   if (noImage) conditions.push(`i.image_data IS NULL`);
-  // 카테고리 필터: "__none__"=괄호 없는 품목, 그 외=첫 괄호 안 값 일치
+  // 카테고리 필터: 구분(category) 컬럼 기준. "__none__"=구분 없는 품목.
   if (cat === "__none__") {
-    conditions.push(`i.name !~ '${CATEGORY_REGEX}'`);
+    conditions.push(`i.category IS NULL`);
   } else if (cat !== "") {
     params.push(cat);
-    conditions.push(
-      `substring(i.name from '${CATEGORY_REGEX}') = $${params.length}`
-    );
+    conditions.push(`i.category = $${params.length}`);
   }
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
   const result = await query(
     `SELECT
-       i.id, i.barcode, i.name, i.created_by, i.created_at, i.updated_at,
+       i.id, i.product_code, i.category, i.kind, i.barcode, i.name,
+       i.created_by, i.created_at, i.updated_at,
        i.is_auto_created, i.scan_exempt,
        (i.image_data IS NOT NULL) AS has_image,
        u.nickname AS author_nickname
@@ -134,12 +133,11 @@ export default async function ItemListPage({ searchParams }: PageProps) {
 
   const items: Item[] = result.rows;
 
-  // 카테고리 드롭다운 옵션 (전체 품목 기준 distinct — 다른 필터와 무관하게 안정)
+  // 카테고리(구분) 드롭다운 옵션 (전체 품목 기준 distinct — 다른 필터와 무관하게 안정)
   const catResult = await query(
-    `SELECT DISTINCT substring(name from '${CATEGORY_REGEX}') AS cat
+    `SELECT DISTINCT category AS cat
        FROM items
-      WHERE deleted_at IS NULL
-        AND substring(name from '${CATEGORY_REGEX}') IS NOT NULL
+      WHERE deleted_at IS NULL AND category IS NOT NULL AND category <> ''
       ORDER BY cat`
   );
   const categories: string[] = catResult.rows
@@ -294,6 +292,11 @@ export default async function ItemListPage({ searchParams }: PageProps) {
                     <h2 className="font-medium text-[11px] sm:text-xs text-zinc-900 line-clamp-2 leading-snug">
                       {item.name}
                     </h2>
+                    {item.product_code && (
+                      <p className="mt-0.5 font-mono text-[10px] text-zinc-400 truncate">
+                        {item.product_code}
+                      </p>
+                    )}
                     <div className="mt-1 flex items-center gap-1 flex-wrap">
                       <BarcodeTag barcode={item.barcode} />
                       {item.scan_exempt && (

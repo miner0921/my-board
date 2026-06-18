@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { composeProductName } from "./product-name";
 
 // 발주서 / 송장 엑셀 파싱.
 // 컬럼명은 실제 운영 파일 기준 (CLAUDE.md 도메인 설명 참고).
@@ -105,11 +106,16 @@ export function parseInvoiceSheet(buffer: Buffer): InvoiceRow[] {
   return rows;
 }
 
-// ── 품목 대량 등록 (.xlsx / .csv) ───────────────────────────
-// 헤더: 품목명 / 바코드 (별칭: 상품명, barcode). 첫 시트, 2행부터 데이터.
+// ── 품목 대량 등록 (.xlsx / .csv) — SKU 마스터 양식 ──────────
+// 19개 컬럼 중 헤더 "이름"으로 4개만 사용(위치 인덱스 아님): 품목코드/바코드/구분/종류.
+// 첫 시트, 1행 헤더, 2행부터 데이터. 나머지 15개 컬럼은 무시.
+// name(품명)은 composeProductName(구분, 종류)로 조합 — 검수 매칭 키.
 export type ItemUploadRow = {
-  name: string;
+  productCode: string | null;
   barcode: string | null;
+  category: string; // 구분 (원본)
+  kind: string; // 종류 (원본)
+  name: string; // "(구분)종류" 조합 품명
   rowNo: number; // 엑셀 행 번호 (헤더=1, 데이터 첫 행=2) — 미리보기 표시용
 };
 
@@ -124,15 +130,16 @@ export function parseItemsSheet(buffer: Buffer): ItemUploadRow[] {
   });
 
   return arr.map((r, i) => {
-    const name = String(
-      r["품목명"] ?? r["상품명"] ?? r["이름"] ?? ""
-    ).trim();
-    const barcodeRaw = String(
-      r["바코드"] ?? r["barcode"] ?? r["Barcode"] ?? ""
-    ).trim();
+    const productCodeRaw = String(r["품목코드"] ?? "").trim();
+    const barcodeRaw = String(r["바코드"] ?? "").trim();
+    const category = String(r["구분"] ?? "").trim();
+    const kind = String(r["종류"] ?? "").trim();
     return {
-      name,
+      productCode: productCodeRaw === "" ? null : productCodeRaw,
       barcode: barcodeRaw === "" ? null : barcodeRaw,
+      category,
+      kind,
+      name: composeProductName(category, kind),
       rowNo: i + 2,
     };
   });

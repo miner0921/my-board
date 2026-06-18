@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { splitProductName } from "@/lib/product-name";
 
 // ─────────────────────────────────────────────────────────────
 // 품목 등록/수정 공용 폼.
@@ -18,8 +19,10 @@ export default function ItemForm(props: Props) {
   const isEdit = props.mode === "edit";
   const editItemId = props.mode === "edit" ? props.itemId : null;
 
+  const [productCode, setProductCode] = useState("");
+  const [category, setCategory] = useState(""); // 구분
+  const [kind, setKind] = useState(""); // 종류
   const [barcode, setBarcode] = useState("");
-  const [name, setName] = useState("");
   const [scanExempt, setScanExempt] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -47,8 +50,20 @@ export default function ItemForm(props: Props) {
           setFetching(false);
           return;
         }
+        setProductCode(data.item.product_code ?? "");
+        const cat = data.item.category ?? "";
+        const knd = data.item.kind ?? "";
+        // 구분·종류가 둘 다 비어있으면(송장 자동생성 품목) 품명에서 역산해 채움.
+        // 컬럼에 값이 있으면(엑셀·개별 등록분) 그대로 사용. 저장은 항상 compose로 합침.
+        if (!cat && !knd) {
+          const split = splitProductName(data.item.name);
+          setCategory(split.category);
+          setKind(split.kind);
+        } else {
+          setCategory(cat);
+          setKind(knd);
+        }
         setBarcode(data.item.barcode ?? "");
-        setName(data.item.name ?? "");
         setScanExempt(!!data.item.scan_exempt);
         setHasExistingImage(!!data.item.has_image);
         setExistingImageStamp(new Date(data.item.updated_at).getTime());
@@ -119,8 +134,11 @@ export default function ItemForm(props: Props) {
     setLoading(true);
     try {
       const formData = new FormData();
+      formData.append("product_code", productCode); // 빈 문자열 OK (서버에서 NULL 변환)
+      formData.append("category", category);
+      formData.append("kind", kind);
       formData.append("barcode", barcode); // 빈 문자열 OK (서버에서 NULL 변환)
-      formData.append("name", name);
+      // name(품명)은 서버에서 composeProductName(구분, 종류)로 조합 — 여기서 보내지 않음
       formData.append("scan_exempt", scanExempt ? "1" : "");
       if (newImageFile) {
         formData.append("image", newImageFile);
@@ -156,6 +174,61 @@ export default function ItemForm(props: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* 품목코드 (선택) */}
+      <div>
+        <label className="block text-sm font-medium text-zinc-700 mb-1">
+          품목코드 <span className="text-zinc-400 text-xs">(선택)</span>
+        </label>
+        <input
+          type="text"
+          value={productCode}
+          onChange={(e) => setProductCode(e.target.value)}
+          className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 font-mono"
+          placeholder="예: TPBEV0004"
+          maxLength={100}
+        />
+        <p className="text-xs text-zinc-400 mt-1">{productCode.length} / 100자</p>
+      </div>
+
+      {/* 구분 + 종류 → 품명 "(구분)종류" 로 조합 저장 */}
+      <div className="grid grid-cols-1 sm:grid-cols-[8rem_1fr] gap-3">
+        <div>
+          <label className="block text-sm font-medium text-zinc-700 mb-1">
+            구분 <span className="text-zinc-400 text-xs">(선택)</span>
+          </label>
+          <input
+            type="text"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
+            placeholder="예: 1kg"
+            maxLength={100}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-zinc-700 mb-1">
+            종류
+          </label>
+          <input
+            type="text"
+            value={kind}
+            onChange={(e) => setKind(e.target.value)}
+            className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
+            placeholder="예: 악마초코"
+            maxLength={200}
+            required
+          />
+        </div>
+      </div>
+      {/* 조합 품명 미리보기 — 저장될 실제 품명(검수 매칭 키) */}
+      <p className="text-xs text-zinc-500 -mt-1">
+        저장 품명:{" "}
+        <span className="font-medium text-zinc-700">
+          {category.trim() ? `(${category.trim()})` : ""}
+          {kind.trim() || <span className="text-zinc-300">(종류 입력)</span>}
+        </span>
+      </p>
+
       {/* 바코드 (선택) */}
       <div>
         <label className="block text-sm font-medium text-zinc-700 mb-1">
@@ -170,23 +243,6 @@ export default function ItemForm(props: Props) {
           maxLength={100}
         />
         <p className="text-xs text-zinc-400 mt-1">{barcode.length} / 100자</p>
-      </div>
-
-      {/* 품목명 (필수) */}
-      <div>
-        <label className="block text-sm font-medium text-zinc-700 mb-1">
-          품목명
-        </label>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
-          placeholder="품목명을 입력하세요"
-          maxLength={200}
-          required
-        />
-        <p className="text-xs text-zinc-400 mt-1">{name.length} / 200자</p>
       </div>
 
       {/* 스캔 불필요 */}

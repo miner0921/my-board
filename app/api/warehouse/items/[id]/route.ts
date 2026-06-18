@@ -3,6 +3,14 @@ import { query } from "@/lib/db";
 import { auth } from "@/auth";
 import { readUploadedImage } from "@/lib/upload";
 import { logAccess } from "@/lib/audit";
+import {
+  composeProductName,
+  MAX_PRODUCT_CODE_LEN,
+  MAX_CATEGORY_LEN,
+  MAX_KIND_LEN,
+  MAX_NAME_LEN,
+  MAX_BARCODE_LEN,
+} from "@/lib/product-name";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -24,7 +32,8 @@ export async function GET(request: Request, { params }: RouteContext) {
 
     const result = await query(
       `SELECT
-         i.id, i.barcode, i.name, i.created_by, i.created_at, i.updated_at,
+         i.id, i.product_code, i.category, i.kind, i.barcode, i.name,
+         i.created_by, i.created_at, i.updated_at,
          i.is_auto_created, i.scan_exempt,
          (i.image_data IS NOT NULL) AS has_image,
          u.nickname AS author_nickname
@@ -60,6 +69,8 @@ export async function GET(request: Request, { params }: RouteContext) {
 }
 
 // PUT: 품목 수정 (본인만)
+// product_code/category/kind/barcode 수정. name(품명)은 composeProductName(구분, 종류)로 조합.
+// name/category/kind 는 항상 같이 기록(드리프트 방지) — name 만 따로 바꾸는 경로 없음.
 // barcode 빈 문자열은 NULL 로 저장.
 // image 새 파일이면 교체, removeImage="1"이면 NULL, 둘 다 아니면 기존 유지.
 export async function PUT(request: Request, { params }: RouteContext) {
@@ -74,31 +85,54 @@ export async function PUT(request: Request, { params }: RouteContext) {
 
     const { id } = await params;
     const formData = await request.formData();
+    const productCodeRaw = String(formData.get("product_code") ?? "").trim();
+    const category = String(formData.get("category") ?? "").trim();
+    const kind = String(formData.get("kind") ?? "").trim();
     const barcodeRaw = String(formData.get("barcode") ?? "").trim();
-    const name = String(formData.get("name") ?? "").trim();
     const image = formData.get("image");
     const removeImage = formData.get("removeImage") === "1";
     const scanExempt = formData.get("scan_exempt") === "1";
 
-    if (!name) {
+    const name = composeProductName(category, kind);
+
+    if (!kind) {
       return NextResponse.json(
-        { error: "품목명을 입력해주세요." },
+        { error: "종류(품명)를 입력해주세요." },
         { status: 400 }
       );
     }
-    if (barcodeRaw.length > 100) {
+    if (productCodeRaw.length > MAX_PRODUCT_CODE_LEN) {
+      return NextResponse.json(
+        { error: "품목코드는 100자 이하여야 합니다." },
+        { status: 400 }
+      );
+    }
+    if (category.length > MAX_CATEGORY_LEN) {
+      return NextResponse.json(
+        { error: "구분은 100자 이하여야 합니다." },
+        { status: 400 }
+      );
+    }
+    if (kind.length > MAX_KIND_LEN) {
+      return NextResponse.json(
+        { error: "종류는 200자 이하여야 합니다." },
+        { status: 400 }
+      );
+    }
+    if (barcodeRaw.length > MAX_BARCODE_LEN) {
       return NextResponse.json(
         { error: "바코드는 100자 이하여야 합니다." },
         { status: 400 }
       );
     }
-    if (name.length > 200) {
+    if (name.length > MAX_NAME_LEN) {
       return NextResponse.json(
-        { error: "품목명은 200자 이하여야 합니다." },
+        { error: "구분+종류로 조합한 품명이 200자를 초과합니다." },
         { status: 400 }
       );
     }
 
+    const productCode: string | null = productCodeRaw === "" ? null : productCodeRaw;
     const barcode: string | null = barcodeRaw === "" ? null : barcodeRaw;
 
     // 권한 체크: 자동 등록(is_auto_created=TRUE)이면 누구나 수정 가능,
@@ -130,7 +164,7 @@ export async function PUT(request: Request, { params }: RouteContext) {
       if (!parsed.ok) {
         return NextResponse.json({ error: parsed.error }, { status: 400 });
       }
-      imageSql = ", image_data = $5, image_mime = $6";
+      imageSql = ", image_data = $8, image_mime = $9";
       imageParams = [parsed.buffer, parsed.mime];
     } else if (removeImage) {
       imageSql = ", image_data = NULL, image_mime = NULL";
@@ -143,13 +177,13 @@ export async function PUT(request: Request, { params }: RouteContext) {
     // 바코드는 중복 허용 (016에서 UNIQUE 제약 해제).
     const result = await query(
       `UPDATE items
-       SET barcode = $1, name = $2, scan_exempt = $3,
-           updated_at = CURRENT_TIMESTAMP
+       SET product_code = $1, category = $2, kind = $3, barcode = $4, name = $5,
+           scan_exempt = $6, updated_at = CURRENT_TIMESTAMP
            ${imageSql}
-       WHERE id = $4
-       RETURNING id, barcode, name, updated_at, scan_exempt,
+       WHERE id = $7
+       RETURNING id, product_code, category, kind, barcode, name, updated_at, scan_exempt,
                  (image_data IS NOT NULL) AS has_image`,
-      [barcode, name, scanExempt, id, ...imageParams]
+      [productCode, category, kind, barcode, name, scanExempt, id, ...imageParams]
     );
 
     await logAccess({
