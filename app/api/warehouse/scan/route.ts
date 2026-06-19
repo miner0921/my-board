@@ -713,16 +713,20 @@ async function loadInvoiceFull(invoiceId: number): Promise<{
        GROUP BY i.id`,
       [invoiceId]
     ),
-    // 검수 화면 카드/원문은 제외되지 않은 품목만 보여준다.
+    // 제외(취소)된 품목도 함께 실어보낸다 — "전체 상품"(OrderText)에서 "(취소)"로
+    //   보여주기 위함. 카드/진행률은 클라이언트가 excluded 플래그로 걸러낸다.
+    //   (진행률 집계는 위 invoice 쿼리가 excluded_at IS NULL 로 이미 제외 — 영향 없음)
     query(
       `SELECT
          ii.id AS invoice_item_id,
          ii.item_id, ii.quantity, ii.scanned_count, ii.display_name,
+         (ii.excluded_at IS NOT NULL) AS excluded,
+         ii.is_added_on_scan,
          it.name, it.barcode, it.updated_at, it.scan_exempt,
          (it.image_data IS NOT NULL) AS has_image
        FROM invoice_items ii
        JOIN items it ON it.id = ii.item_id
-       WHERE ii.invoice_id = $1 AND ii.excluded_at IS NULL
+       WHERE ii.invoice_id = $1
        ORDER BY ii.id`,
       [invoiceId]
     ),

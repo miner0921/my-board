@@ -56,6 +56,8 @@ type ItemPayload = {
   updated_at: string;
   is_added_on_scan?: boolean;
   scan_exempt?: boolean;
+  // 취소(excluded)된 품목 — items 에 남겨두되 카드/진행률에선 제외, OrderText 에선 "(취소)".
+  excluded?: boolean;
 };
 
 // "전체 상품"(OrderText)용 송장 원문 라인. 별칭으로 합쳐지기 전 원문 그대로.
@@ -224,11 +226,6 @@ export default function ScanPage() {
     setLastScannedId(invoiceItemId);
   };
 
-  const addItem = (newItem: ItemPayload) => {
-    setItems((prev) => [...prev, newItem]);
-    setLastScannedId(newItem.invoice_item_id);
-  };
-
   // 카운트 갱신 + 신규 행 보강(upsert). 완료 송장에 현장 추가 시
   // 즉시 재완료되어 invoice_complete로 응답될 때, 배열에 없는 신규
   // 품목 카드도 함께 추가하기 위함. (없으면 추가 / 있으면 카운트만 갱신)
@@ -236,9 +233,11 @@ export default function ScanPage() {
     setItems((prev) => {
       const exists = prev.some((it) => it.invoice_item_id === item.invoice_item_id);
       if (exists) {
+        // 추가/스캔(force·검색)은 DB 레벨에서 un-exclude(복구)하므로
+        //   취소돼 있던 행이면 excluded 를 풀어 "(취소)" 표시를 지운다(흔적 없음).
         return prev.map((it) =>
           it.invoice_item_id === item.invoice_item_id
-            ? { ...it, scanned_count: item.scanned_count }
+            ? { ...it, scanned_count: item.scanned_count, excluded: false }
             : it
         );
       }
@@ -518,7 +517,9 @@ export default function ScanPage() {
         return;
       }
       case "scan_force_added": {
-        addItem(data.item);
+        // upsert 로 처리 — 신규는 추가, 취소돼 있던 행을 바코드로 복구한 경우엔
+        //   기존 행 갱신 + excluded 해제(중복 행 방지). DB도 ON CONFLICT 로 un-exclude.
+        upsertItem(data.item);
         setInvoice((prev) =>
           prev
             ? {
@@ -690,11 +691,12 @@ export default function ScanPage() {
   // 검수 화면 품목을 두 구역으로 나눈다. 순서는 송장 원문 순서(ii.id) 그대로.
   //   - remainingItems: 아직 안 끝난 품목 ("남은 상품")
   //   - completedItems: 다 찍은/챙긴 품목 ("완료된 상품" — 초록, 사라지지 않음)
-  // items 는 이미 취소(excluded) 품목이 빠진 목록이라 별도 필터 불필요.
+  // items 엔 취소(excluded) 품목도 들어있다(OrderText "(취소)" 표시용) → 카드/진행률에선 제외.
   const isItemComplete = (it: ItemPayload) =>
     it.scanned_count >= it.quantity && it.quantity > 0;
-  const remainingItems = items.filter((it) => !isItemComplete(it));
-  const completedItems = items.filter(isItemComplete);
+  const activeItems = items.filter((it) => !it.excluded);
+  const remainingItems = activeItems.filter((it) => !isItemComplete(it));
+  const completedItems = activeItems.filter(isItemComplete);
 
   // 품목 취소(송장에서 빼기) 확정 — 내부 API/식별자는 exclude 그대로 사용
   const handleExclude = async (reason: string) => {
@@ -722,9 +724,14 @@ export default function ScanPage() {
         vibrate([100, 50, 100]);
         return;
       }
-      // 취소된 행은 화면(카드/원문)에서 제거
+      // 취소된 행은 카드/진행률에선 빠지되, items 엔 excluded 플래그로 남겨둔다
+      //   (OrderText "전체 상품"에서 "(취소)"로 보여주기 위함).
       setItems((prev) =>
-        prev.filter((it) => it.invoice_item_id !== target.invoice_item_id)
+        prev.map((it) =>
+          it.invoice_item_id === target.invoice_item_id
+            ? { ...it, excluded: true }
+            : it
+        )
       );
       if (lastScannedId === target.invoice_item_id) setLastScannedId(null);
 
@@ -1094,7 +1101,7 @@ export default function ScanPage() {
       )}
 
       {/* 제품 카드 — "남은 상품"(위) / "완료된 상품"(아래) 두 구역 */}
-      {invoice && items.length === 0 && (
+      {invoice && activeItems.length === 0 && (
         <div className="text-center py-8 border border-dashed border-zinc-300 rounded-lg text-zinc-500 text-sm">
           <p>연결된 품목이 없습니다.</p>
           <button
@@ -1109,7 +1116,7 @@ export default function ScanPage() {
       )}
 
       {/* 남은 상품 */}
-      {invoice && items.length > 0 && (
+      {invoice && activeItems.length > 0 && (
         <>
           <div className="flex items-center justify-between mb-1.5">
             <p className="text-[11px] text-zinc-500">남은 상품</p>
