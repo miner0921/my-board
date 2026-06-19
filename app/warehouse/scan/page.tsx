@@ -15,6 +15,7 @@ import ExcludeItemModal from "./ExcludeItemModal";
 import ScanItemMenuModal from "./ScanItemMenuModal";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import {
+  beepBlocked,
   beepComplete,
   beepError,
   beepSuccess,
@@ -577,6 +578,17 @@ export default function ScanPage() {
       sendScan(input);
     }
   };
+
+  // 위험 모달이 떠 있는 동안 스캔(Enter)이 들어오면 호출 — 무시만 하지 않고 경고.
+  //   경고음(정상 스캔과 다른 beepBlocked) + 진동 + 모달 안 배너(가드 훅이 처리).
+  //   작업자가 물건만 보고 화면을 안 봐도 소리로 즉시 알아채 멈추게 한다.
+  const handleBlockedScan = useCallback(() => {
+    initAudio();
+    beepBlocked();
+    vibrate([60, 40, 60, 40, 60]);
+    setStatusKind("error");
+    setStatusMsg("⚠️ 처리 대기 중인 경고가 있습니다. 화면을 확인하세요.");
+  }, []);
 
   // ── 모달 핸들러 ──────────────────────────────────────────
   const handleInvoiceChangeConfirm = () => {
@@ -1215,6 +1227,7 @@ export default function ScanPage() {
           message={wrongItem.message}
           onCancel={handleWrongItemCancel}
           onConfirm={handleWrongItemConfirm}
+          onBlockedScan={handleBlockedScan}
         />
       )}
       {overQty && (
@@ -1224,6 +1237,7 @@ export default function ScanPage() {
           scannedCount={overQty.scannedCount}
           onCancel={handleOverQtyCancel}
           onConfirm={handleOverQtyConfirm}
+          onBlockedScan={handleBlockedScan}
         />
       )}
       {invoiceChange && (
@@ -1232,6 +1246,7 @@ export default function ScanPage() {
           nextInvoice={invoiceChange.nextInvoice}
           onCancel={handleInvoiceChangeCancel}
           onConfirm={handleInvoiceChangeConfirm}
+          onBlockedScan={handleBlockedScan}
         />
       )}
       {partialOpen && invoice && (
@@ -1256,6 +1271,7 @@ export default function ScanPage() {
           totalQty={invoice.total_qty}
           onCancel={() => setCancelOpen(false)}
           onConfirm={handleCancelInvoiceConfirm}
+          onBlockedScan={handleBlockedScan}
         />
       )}
       {manualTarget && (

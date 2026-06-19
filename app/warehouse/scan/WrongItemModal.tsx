@@ -1,47 +1,31 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { AlertTriangle } from "lucide-react";
+import { useScannerBlockGuard } from "./useScannerBlockGuard";
+import BlockedScanBanner from "./BlockedScanBanner";
 
 type Props = {
   itemName: string;
   message: string;
   onCancel: () => void;
   onConfirm: () => void;
+  onBlockedScan: () => void;
 };
 
 // 현재 송장에 없는 품목 바코드가 스캔됐을 때 띄우는 경고 모달.
 // [취소] 또는 [송장에 추가] 둘 중 선택.
-//   - 취소: 그냥 닫음 (ESC)
-//   - 송장에 추가: force=true로 재요청 → 현장 추가 처리 (Enter)
-// 닫히면 부모가 입력란 focus 복원.
+//   - 취소: 그냥 닫음
+//   - 송장에 추가: force=true로 재요청 → 현장 추가 처리
+// ⚠️ 키보드(Enter/Esc)로는 아무것도 안 됨 — 스캐너 자동 Enter 오작동 방지.
+//    확인·취소는 오직 마우스 클릭/터치로만. 스캔이 들어오면 경고만 주고 모달은 버틴다.
 export default function WrongItemModal({
   itemName,
   message,
   onCancel,
   onConfirm,
+  onBlockedScan,
 }: Props) {
-  const confirmBtnRef = useRef<HTMLButtonElement | null>(null);
-
-  // 마운트 즉시 [송장에 추가] 버튼에 focus
-  // → USB 스캐너 입력이 input으로 흘러들어가지 않도록
-  useEffect(() => {
-    confirmBtnRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onCancel();
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        onConfirm();
-      }
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [onCancel, onConfirm]);
+  const { blocked, containerRef } = useScannerBlockGuard(onBlockedScan);
 
   return (
     <div
@@ -49,7 +33,12 @@ export default function WrongItemModal({
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
     >
-      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+      <div
+        ref={containerRef}
+        tabIndex={-1}
+        className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 outline-none"
+      >
+        {blocked && <BlockedScanBanner />}
         <div className="flex items-start gap-3 mb-4">
           <AlertTriangle
             size={28}
@@ -84,15 +73,14 @@ export default function WrongItemModal({
             onClick={onCancel}
             className="flex-1 py-3 rounded-lg text-sm font-medium border border-zinc-300 text-zinc-700 hover:bg-zinc-50 transition"
           >
-            취소 (ESC)
+            취소
           </button>
           <button
-            ref={confirmBtnRef}
             type="button"
             onClick={onConfirm}
             className="flex-1 py-3 rounded-lg text-sm font-medium bg-amber-600 text-white hover:bg-amber-700 transition"
           >
-            송장에 추가 (Enter)
+            송장에 추가
           </button>
         </div>
       </div>

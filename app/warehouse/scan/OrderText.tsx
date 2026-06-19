@@ -83,6 +83,21 @@ export default function OrderText({
 
   if (entries.length === 0) return null;
 
+  // 초과분(발주보다 더 챙긴 수량) 사전 계산 — 원문 수량은 그대로 두고 옆에 "(+N 초과)".
+  //   초과 = item.scanned_count - item.quantity (>0). over>0 이면 항상 complete의 특수 케이스.
+  //   별칭으로 한 item 을 여러 원문 라인이 공유하면 scanned_count 가 합산이므로
+  //   중복 표시를 막아 그 item 의 첫 라인에만 배지를 단다.
+  const overShownItemIds = new Set<number>();
+  const overByEntry = entries.map((e) => {
+    const item = e.item;
+    const over = item ? Math.max(0, item.scanned_count - item.quantity) : 0;
+    // 추가 품목은 "발주 대비"가 아니므로 초과 미표시("(추가)"만).
+    if (e.isAdded || over <= 0 || !item) return 0;
+    if (overShownItemIds.has(item.item_id)) return 0;
+    overShownItemIds.add(item.item_id);
+    return over;
+  });
+
   return (
     <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
       <p className="text-[11px] text-zinc-500 mb-1.5">전체 상품</p>
@@ -107,9 +122,12 @@ export default function OrderText({
                 ? "text-blue-600"
                 : "text-zinc-800";
 
+          const over = overByEntry[i];
+
           return (
             <span key={i}>
               {i > 0 && <span className="text-zinc-300 mx-1">/</span>}
+              {/* 품명+수량(+동봉/취소/부분)은 한 span — 완료 시 여기에만 취소선 */}
               <span className={textClass}>
                 {e.label}
                 {e.qty}
@@ -125,12 +143,6 @@ export default function OrderText({
                     (취소)
                   </span>
                 )}
-                {!excluded && e.isAdded && (
-                  <span className="text-blue-600 no-underline text-[11px]">
-                    {" "}
-                    (추가)
-                  </span>
-                )}
                 {partial && (
                   <span className="text-zinc-400 no-underline">
                     {" "}
@@ -138,6 +150,17 @@ export default function OrderText({
                   </span>
                 )}
               </span>
+              {/* 아래 배지들은 취소선 span 밖 suffix — 선이 라벨을 가로지르지 않게 정렬 */}
+              {!excluded && over > 0 && (
+                <span className="text-amber-600 text-[11px] align-baseline ml-0.5">
+                  (+{over} 초과)
+                </span>
+              )}
+              {!excluded && e.isAdded && (
+                <span className="text-blue-600 text-[11px] align-baseline ml-0.5">
+                  (추가)
+                </span>
+              )}
             </span>
           );
         })}

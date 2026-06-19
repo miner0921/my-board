@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { DoorOpen } from "lucide-react";
+import { useScannerBlockGuard } from "./useScannerBlockGuard";
+import BlockedScanBanner from "./BlockedScanBanner";
 
 type Props = {
   invoiceNo: string;
@@ -9,39 +10,24 @@ type Props = {
   totalQty: number;
   onCancel: () => void;
   onConfirm: () => void;
+  onBlockedScan: () => void;
 };
 
 // 진행 중 검수를 자발적으로 떠나려 할 때 띄우는 확인 모달.
 // ([송장 변경] 버튼으로 트리거).
 // 진행률은 DB에 그대로 보존됨 — 나중에 같은 송장 스캔하면 이어서 검수.
 //
-// ESC = 취소(계속 검수), Enter = 송장 대기로.
+// ⚠️ 키보드(Enter/Esc)로는 아무것도 안 됨 — 스캐너 자동 Enter 오작동 방지.
+//    확인·취소는 오직 마우스 클릭/터치로만. 스캔이 들어오면 경고만 주고 모달은 버틴다.
 export default function CancelInvoiceModal({
   invoiceNo,
   scannedQty,
   totalQty,
   onCancel,
   onConfirm,
+  onBlockedScan,
 }: Props) {
-  const confirmBtnRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    confirmBtnRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onCancel();
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        onConfirm();
-      }
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [onCancel, onConfirm]);
+  const { blocked, containerRef } = useScannerBlockGuard(onBlockedScan);
 
   return (
     <div
@@ -49,7 +35,12 @@ export default function CancelInvoiceModal({
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
     >
-      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+      <div
+        ref={containerRef}
+        tabIndex={-1}
+        className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 outline-none"
+      >
+        {blocked && <BlockedScanBanner />}
         <div className="flex items-start gap-3 mb-4">
           <DoorOpen
             size={28}
@@ -87,15 +78,14 @@ export default function CancelInvoiceModal({
             onClick={onCancel}
             className="flex-1 py-3 rounded-lg text-sm font-medium border border-zinc-300 text-zinc-700 hover:bg-zinc-50 transition"
           >
-            계속 검수 (ESC)
+            계속 검수
           </button>
           <button
-            ref={confirmBtnRef}
             type="button"
             onClick={onConfirm}
             className="flex-1 py-3 rounded-lg text-sm font-medium bg-zinc-900 text-white hover:bg-zinc-800 transition"
           >
-            송장 대기로 (Enter)
+            송장 대기로
           </button>
         </div>
       </div>

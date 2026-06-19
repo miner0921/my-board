@@ -62,6 +62,16 @@ export function beepComplete() {
   tone(1300, 220, 270);
 }
 
+// 차단 경고음 — 위험 모달이 떠 있는데 스캔(Enter)이 들어왔을 때.
+// 성공(800Hz 단발)·에러(220Hz 저음 2연타)·완료(상승 3음)와 확실히 구별되는
+// 중음 빠른 4연타 경보. (실기기에서 듣고 톤 조정 가능)
+export function beepBlocked() {
+  tone(560, 70);
+  tone(560, 70, 110);
+  tone(560, 70, 220);
+  tone(560, 70, 330);
+}
+
 export function vibrate(pattern: number | number[]) {
   if (typeof navigator === "undefined") return;
   if (typeof navigator.vibrate !== "function") return;

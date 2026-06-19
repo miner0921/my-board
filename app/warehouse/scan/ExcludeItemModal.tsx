@@ -107,7 +107,7 @@ export default function ExcludeItemModal({
             onClick={() => onConfirm(reason.trim())}
             className="flex-1 py-3 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition"
           >
-            취소
+            확인
           </button>
         </div>
       </div>

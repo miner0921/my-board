@@ -38,7 +38,7 @@ export default function ScanItemMenuModal({
             className="flex items-center gap-2 w-full px-4 py-3 rounded-lg border border-red-200 text-sm font-medium text-red-700 hover:bg-red-50 transition"
           >
             <MinusCircle size={16} strokeWidth={1.75} className="text-red-500" />
-            취소 (송장에서 빼기)
+            품목 전체 취소
           </button>
         </div>
 

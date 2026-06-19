@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { AlertTriangle } from "lucide-react";
+import { useScannerBlockGuard } from "./useScannerBlockGuard";
+import BlockedScanBanner from "./BlockedScanBanner";
 
 type Props = {
   currentInvoice: {
@@ -12,37 +13,21 @@ type Props = {
   nextInvoice: { invoice_no: string };
   onCancel: () => void;
   onConfirm: () => void;
+  onBlockedScan: () => void;
 };
 
 // 진행 중 송장이 있는데 다른 송장 바코드가 스캔됐을 때.
 // 진행률 0% 초과인 경우만 표시됨 (서버에서 이미 필터링).
-// ESC = 취소, Enter = 이동 (스캐너가 보내는 Enter도 처리).
+// ⚠️ 키보드(Enter/Esc)로는 아무것도 안 됨 — 스캐너 자동 Enter 오작동 방지.
+//    확인·취소는 오직 마우스 클릭/터치로만. 스캔이 들어오면 경고만 주고 모달은 버틴다.
 export default function InvoiceChangeModal({
   currentInvoice,
   nextInvoice,
   onCancel,
   onConfirm,
+  onBlockedScan,
 }: Props) {
-  const confirmBtnRef = useRef<HTMLButtonElement | null>(null);
-
-  // 마운트 시 [그대로 이동] 버튼에 focus
-  useEffect(() => {
-    confirmBtnRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onCancel();
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        onConfirm();
-      }
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [onCancel, onConfirm]);
+  const { blocked, containerRef } = useScannerBlockGuard(onBlockedScan);
 
   const remaining = currentInvoice.total_qty - currentInvoice.scanned_qty;
 
@@ -52,7 +37,12 @@ export default function InvoiceChangeModal({
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
     >
-      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+      <div
+        ref={containerRef}
+        tabIndex={-1}
+        className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 outline-none"
+      >
+        {blocked && <BlockedScanBanner />}
         <div className="flex items-start gap-3 mb-4">
           <AlertTriangle
             size={28}
@@ -100,15 +90,14 @@ export default function InvoiceChangeModal({
             onClick={onCancel}
             className="flex-1 py-3 rounded-lg text-sm font-medium border border-zinc-300 text-zinc-700 hover:bg-zinc-50 transition"
           >
-            취소 (ESC)
+            취소
           </button>
           <button
-            ref={confirmBtnRef}
             type="button"
             onClick={onConfirm}
             className="flex-1 py-3 rounded-lg text-sm font-medium bg-zinc-900 text-white hover:bg-zinc-800 transition"
           >
-            그대로 이동 (Enter)
+            그대로 이동
           </button>
         </div>
       </div>
