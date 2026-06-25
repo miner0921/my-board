@@ -44,6 +44,7 @@ type Batch = {
   deleted_at: string | null;
   deleted_by_name: string | null;
   scanned_invoice_count: number;
+  files: { id: number; kind: string; filename: string | null }[];
 };
 
 type BatchDetail = {
@@ -370,31 +371,43 @@ export default function BatchList({
                   </div>
                 )}
 
-                {/* 발주서 / 송장 두 줄 */}
-                <div className="space-y-1">
-                  <FileSide
-                    label="발주서"
-                    batchId={b.id}
-                    kind="order"
-                    hasFile={b.has_order_file}
-                    filename={b.order_filename}
-                    uploadedByName={b.order_uploaded_by_name}
-                    canFill={isWaiting && !isDeleted}
-                    busy={busy}
-                    onFill={(e) => handleFill(b, "order", e)}
-                  />
-                  <FileSide
-                    label="송장"
-                    batchId={b.id}
-                    kind="invoice"
-                    hasFile={b.has_invoice_file}
-                    filename={b.invoice_filename}
-                    uploadedByName={b.invoice_uploaded_by_name}
-                    canFill={isWaiting && !isDeleted}
-                    busy={busy}
-                    onFill={(e) => handleFill(b, "invoice", e)}
-                  />
-                </div>
+                {/* 발주서 / 송장 파일 목록(각 N개) */}
+                {(() => {
+                  const orderFiles = b.files.filter((f) => f.kind === "order");
+                  const invoiceFiles = b.files.filter(
+                    (f) => f.kind === "invoice"
+                  );
+                  // 발주서·송장 그룹이 둘 다 파일이 있을 때만 사이에 희미한 구분선
+                  const showDivider =
+                    orderFiles.length > 0 && invoiceFiles.length > 0;
+                  return (
+                    <div className="space-y-1">
+                      <KindFiles
+                        label="발주서"
+                        files={orderFiles}
+                        canFill={isWaiting && !isDeleted && orderFiles.length === 0}
+                        busy={busy}
+                        onFill={(e) => handleFill(b, "order", e)}
+                        promptText="발주서를 업로드하세요"
+                        uploadLabel="발주서 업로드"
+                      />
+                      {showDivider && (
+                        <div className="border-t border-zinc-100" />
+                      )}
+                      <KindFiles
+                        label="송장"
+                        files={invoiceFiles}
+                        canFill={
+                          isWaiting && !isDeleted && invoiceFiles.length === 0
+                        }
+                        busy={busy}
+                        onFill={(e) => handleFill(b, "invoice", e)}
+                        promptText="송장을 업로드하세요"
+                        uploadLabel="송장 업로드"
+                      />
+                    </div>
+                  );
+                })()}
 
                 {/* 완료: 상세 보기 토글 (삭제 보기에서도 내역 확인 가능) */}
                 {!isWaiting && !busy && (
@@ -517,32 +530,29 @@ function BatchDetailView({ detail }: { detail: BatchDetail }) {
   );
 }
 
-// 한 측(발주서/송장) 줄:
-//  - 파일 있음 → 파일명 + 받기
-//  - 대기 + 빈 측 → 그 줄에만 옅은 노란 배경 + 안내문 + 테두리 버튼 "○○ 업로드"
-function FileSide({
+// 한 종류(발주서/송장)의 파일 목록(N개):
+//  - 파일들 → 각 줄 "파일명 + 받기"(파일 id 기준 다운로드). 라벨은 첫 줄만.
+//  - 대기 + 빈 측 → 옅은 노란 배경 + 안내문 + "○○ 업로드" 버튼.
+//  - 그 외 빈 측 → "미등록".
+function KindFiles({
   label,
-  batchId,
-  kind,
-  hasFile,
-  filename,
-  uploadedByName,
+  files,
   canFill,
   busy,
   onFill,
+  promptText,
+  uploadLabel,
 }: {
   label: string;
-  batchId: number;
-  kind: "order" | "invoice";
-  hasFile: boolean;
-  filename: string | null;
-  uploadedByName: string | null;
+  files: { id: number; filename: string | null }[];
   canFill: boolean;
   busy: boolean;
   onFill: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  promptText: string;
+  uploadLabel: string;
 }) {
-  // 빈 측 + 대기 → 옅은 노란 배경 + 안내문 + 테두리 버튼
-  if (!hasFile && canFill) {
+  // 빈 측 + 대기 → 업로드 안내
+  if (files.length === 0 && canFill) {
     return (
       <div className="flex items-center gap-2 rounded-md bg-amber-50 px-2 py-1.5">
         <FileSpreadsheet
@@ -551,16 +561,14 @@ function FileSide({
           className="text-amber-500 shrink-0"
         />
         <span className="text-zinc-500 shrink-0 w-9">{label}</span>
-        <span className="text-amber-700">
-          {kind === "order" ? "발주서를 업로드하세요" : "송장을 업로드하세요"}
-        </span>
+        <span className="text-amber-700">{promptText}</span>
         <label
           className={`ml-auto shrink-0 inline-flex items-center gap-1 cursor-pointer rounded border border-amber-400 px-2.5 py-1 font-medium text-amber-700 hover:bg-amber-100 ${
             busy ? "opacity-50 pointer-events-none" : ""
           }`}
         >
           <Upload size={12} strokeWidth={2} />
-          {label} 업로드
+          {uploadLabel}
           <input
             type="file"
             accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -573,34 +581,48 @@ function FileSide({
     );
   }
 
-  // 파일 있음 (또는 완료 내역)
+  // 빈 측 + 대기 아님 → 미등록
+  if (files.length === 0) {
+    return (
+      <div className="flex items-center gap-2 px-2 py-1.5">
+        <FileSpreadsheet
+          size={14}
+          strokeWidth={1.75}
+          className="text-zinc-400 shrink-0"
+        />
+        <span className="text-zinc-400 shrink-0 w-9">{label}</span>
+        <span className="text-zinc-300">미등록</span>
+      </div>
+    );
+  }
+
+  // 파일 목록
   return (
-    <div className="flex items-center gap-2 px-2 py-1.5">
-      <FileSpreadsheet
-        size={14}
-        strokeWidth={1.75}
-        className="text-zinc-400 shrink-0"
-      />
-      <span className="text-zinc-400 shrink-0 w-9">{label}</span>
-      {hasFile ? (
-        <>
-          <span className="text-zinc-700 truncate min-w-0">
-            {filename ?? "(파일명 없음)"}
+    <div>
+      {files.map((f, i) => (
+        <div key={f.id} className="flex items-center gap-2 px-2 py-1.5">
+          {/* 라벨 칸(첫 줄만 텍스트, 아래 줄은 빈 칸으로 정렬 유지) */}
+          <span className="text-zinc-400 shrink-0 w-9">
+            {i === 0 ? label : ""}
           </span>
-          {uploadedByName && (
-            <span className="text-zinc-400 shrink-0">· {uploadedByName}</span>
-          )}
+          {/* 아이콘 + 파일명을 한 덩어리로 */}
+          <span className="flex items-center gap-1 min-w-0 text-zinc-700">
+            <FileSpreadsheet
+              size={14}
+              strokeWidth={1.75}
+              className="text-zinc-400 shrink-0"
+            />
+            <span className="truncate">{f.filename ?? "(파일명 없음)"}</span>
+          </span>
           <a
-            href={`/api/warehouse/upload-batches/${batchId}/file?kind=${kind}`}
+            href={`/api/warehouse/upload-files/${f.id}`}
             className="ml-auto shrink-0 inline-flex items-center gap-1 text-blue-600 hover:text-blue-800"
           >
             <Download size={12} strokeWidth={2} />
             받기
           </a>
-        </>
-      ) : (
-        <span className="text-zinc-300">미등록</span>
-      )}
+        </div>
+      ))}
     </div>
   );
 }
