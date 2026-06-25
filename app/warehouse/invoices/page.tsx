@@ -1,183 +1,27 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { query } from "@/lib/db";
 import { Upload } from "lucide-react";
-import InvoiceGroup from "./InvoiceGroup";
 import UploadButton from "./UploadButton";
+import CompletedList from "./CompletedList";
+import { InvoiceTable } from "./_list";
+import {
+  fetchInvoiceList,
+  INVOICE_PAGE_SIZE,
+  type InvoiceListFilters,
+  type InvoiceTab,
+} from "@/lib/invoice-list";
 import {
   BulkSelectProvider,
   BulkBar,
-  BulkCheckbox,
 } from "../_components/BulkSelect";
-
-type InvoiceRow = {
-  id: number;
-  invoice_no: string;
-  order_no: string | null;
-  recipient_name: string | null;
-  recipient_phone: string | null;
-  status: string;
-  customer_type: string | null;
-  created_at: string;
-  completed_at: string | null;
-  total_qty: number;
-  scanned_qty: number;
-  match_tag: string | null;
-  deleted_at: string | null;
-  deleted_by_name: string | null;
-};
-
-function statusBadge(status: string) {
-  if (status === "completed") {
-    return (
-      <span className="inline-block px-2 py-0.5 text-xs rounded bg-green-50 text-green-700 border border-green-200">
-        완료
-      </span>
-    );
-  }
-  if (status === "completed_partial") {
-    return (
-      <span className="inline-block px-2 py-0.5 text-xs rounded bg-amber-50 text-amber-800 border border-amber-300">
-        부분 완료
-      </span>
-    );
-  }
-  return (
-    <span className="inline-block px-2 py-0.5 text-xs rounded bg-amber-50 text-amber-700 border border-amber-200">
-      대기
-    </span>
-  );
-}
-
-// 항상 한국시간(Asia/Seoul)으로 표시 (서버 컴포넌트, 환경 TZ 무관).
-function formatDateShort(date: string) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Seoul",
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date(date));
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
-  return `${get("month")}/${get("day")} ${get("hour")}:${get("minute")}`;
-}
-
-// 매칭 태그 배지 (목록 송장번호 뒤) — matched는 차분, invoice_only는 노란 강조.
-function matchBadge(tag: string | null) {
-  if (tag === "invoice_only") {
-    return (
-      <span className="inline-block px-1.5 py-0.5 text-[11px] rounded bg-amber-50 text-amber-700 border border-amber-200">
-        송장만
-      </span>
-    );
-  }
-  if (tag === "matched") {
-    return (
-      <span className="inline-block px-1.5 py-0.5 text-[11px] rounded bg-zinc-100 text-zinc-500 border border-zinc-200">
-        매칭
-      </span>
-    );
-  }
-  return null;
-}
-
-// 발주서 시트별 customer_type 매핑 (마이그레이션 007 참고)
-function customerTypeBadge(type: string | null) {
-  if (type === "business") {
-    return (
-      <span className="inline-block px-1.5 py-0.5 text-[10px] rounded bg-blue-50 text-blue-700 border border-blue-200">
-        사업자
-      </span>
-    );
-  }
-  if (type === "individual") {
-    return (
-      <span className="inline-block px-1.5 py-0.5 text-[10px] rounded bg-green-50 text-green-700 border border-green-200">
-        개인
-      </span>
-    );
-  }
-  if (type === "retail") {
-    return (
-      <span className="inline-block px-1.5 py-0.5 text-[10px] rounded bg-purple-50 text-purple-700 border border-purple-200">
-        소매
-      </span>
-    );
-  }
-  return (
-    <span className="inline-block px-1.5 py-0.5 text-[10px] rounded bg-zinc-100 text-zinc-500 border border-zinc-200">
-      미분류
-    </span>
-  );
-}
 
 const ALLOWED_TYPES = new Set(["business", "individual", "retail", "none"]);
 
-// 상태 탭: 대기(처리할 일) / 완료(관리용). 정렬축이 아니라 역할축.
+// 상태 탭: 대기(처리할 일) / 완료(관리용). 역할축.
 //   - pending: 미완료 송장(부분 스캔 진행중 포함). 작업 대기열.
-//   - done: 완료/부분완료. 재개·삭제 등 관리 진입로 유지(조회·감사는 검수 이력).
-type Tab = "pending" | "done";
-
-// ── 날짜 그룹화 유틸 ────────────────────────────────────────
-// 현재 날짜 기준으로:
-//   오늘 / 어제 / 이번 주(요일) / 그 외(M/D) / 30일 이전 (한 그룹)
-type GroupKey = string; // "today" | "yesterday" | "WEEK:YYYY-MM-DD" | "DATE:YYYY-MM-DD" | "older"
-
-function startOfDay(d: Date): Date {
-  const r = new Date(d);
-  r.setHours(0, 0, 0, 0);
-  return r;
-}
-
-function diffDays(later: Date, earlier: Date): number {
-  return Math.round(
-    (startOfDay(later).getTime() - startOfDay(earlier).getTime()) /
-      (24 * 60 * 60 * 1000)
-  );
-}
-
-const KO_WEEKDAY = ["일", "월", "화", "수", "목", "금", "토"];
-
-function groupKeyFor(when: string, now: Date): GroupKey {
-  const d = new Date(when);
-  const days = diffDays(now, d);
-  if (days <= 0) return "today";
-  if (days === 1) return "yesterday";
-  if (days < 7) {
-    const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    return `WEEK:${k}`;
-  }
-  if (days <= 30) {
-    const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    return `DATE:${k}`;
-  }
-  return "older";
-}
-
-function labelFor(key: GroupKey, sample: string | null): string {
-  if (key === "today") {
-    const d = new Date();
-    return `오늘 (${d.getMonth() + 1}/${d.getDate()}, ${KO_WEEKDAY[d.getDay()]})`;
-  }
-  if (key === "yesterday") {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return `어제 (${d.getMonth() + 1}/${d.getDate()}, ${KO_WEEKDAY[d.getDay()]})`;
-  }
-  if (key === "older") return "이전";
-  if (!sample) return key;
-  const d = new Date(sample);
-  if (key.startsWith("WEEK:")) {
-    return `${d.getMonth() + 1}/${d.getDate()} (${KO_WEEKDAY[d.getDay()]})`;
-  }
-  // DATE:
-  const sameYear = d.getFullYear() === new Date().getFullYear();
-  return sameYear
-    ? `${d.getMonth() + 1}/${d.getDate()}`
-    : `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
-}
+//   - done: 완료/부분완료. ★ keyset "더 보기" 페이지네이션 적용(무한 누적 대비).
+type Tab = InvoiceTab;
 
 type PageProps = {
   searchParams: Promise<{
@@ -216,86 +60,21 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
   const isFiltered =
     q !== "" || customerType !== "all" || from !== "" || to !== "";
 
-  // 날짜 필터는 현재 탭이 보여주는 날짜 컬럼 기준 (대기=등록일, 완료=완료일)
-  const orderCol = tab === "done" ? "i.completed_at" : "i.created_at";
+  const filters: InvoiceListFilters = { tab, viewDeleted, q, customerType, from, to };
 
-  // 동적 WHERE 구성. 숨김 여부 필터를 항상 먼저 적용.
-  const conditions: string[] = [
-    viewDeleted ? "i.deleted_at IS NOT NULL" : "i.deleted_at IS NULL",
-  ];
-  const params: unknown[] = [];
-  if (q !== "") {
-    params.push(`%${q}%`);
-    conditions.push(
-      `(i.invoice_no ILIKE $${params.length} OR i.order_no ILIKE $${params.length} OR i.recipient_name ILIKE $${params.length} OR i.recipient_phone ILIKE $${params.length})`
-    );
-  }
-  // 숨김 보기에서는 상태 탭 조건을 적용하지 않고 숨긴 송장 전부를 보여준다.
-  if (!viewDeleted) {
-    if (tab === "done") {
-      conditions.push(
-        `i.status IN ('completed', 'completed_partial') AND i.completed_at IS NOT NULL`
-      );
-    } else {
-      conditions.push(`i.status = 'pending'`);
-    }
-  }
-  if (customerType !== "all") {
-    if (customerType === "none") {
-      conditions.push(`i.customer_type IS NULL`);
-    } else {
-      params.push(customerType);
-      conditions.push(`i.customer_type = $${params.length}`);
-    }
-  }
-  if (from !== "") {
-    params.push(from);
-    conditions.push(`${orderCol} >= $${params.length}::date`);
-  }
-  if (to !== "") {
-    params.push(to);
-    // to 당일 포함 (다음날 0시 미만)
-    conditions.push(`${orderCol} < ($${params.length}::date + interval '1 day')`);
-  }
-  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  // 완료 탭(활성)만 페이지네이션 — 무한 누적 대비. 대기/삭제 보기는 현행대로 전체.
+  const paginate = tab === "done" && !viewDeleted;
+  const { rows: invoices, nextCursor, hasMore } = paginate
+    ? await fetchInvoiceList(filters, { limit: INVOICE_PAGE_SIZE })
+    : await fetchInvoiceList(filters);
 
-  const result = await query(
-    `SELECT
-       i.id, i.invoice_no, i.order_no,
-       i.recipient_name, i.recipient_phone,
-       i.status, i.customer_type, i.created_at, i.completed_at, i.match_tag,
-       i.deleted_at,
-       (SELECT du.nickname FROM users du WHERE du.id = i.deleted_by) AS deleted_by_name,
-       COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
-       COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
-     FROM invoices i
-     LEFT JOIN invoice_items ii
-       ON ii.invoice_id = i.id AND ii.excluded_at IS NULL
-     ${where}
-     GROUP BY i.id
-     ORDER BY ${orderCol} DESC NULLS LAST`,
-    params
-  );
-
-  const invoices: InvoiceRow[] = result.rows;
-
-  // 그룹핑
-  const now = new Date();
-  const groupOrder: GroupKey[] = [];
-  const groups = new Map<
-    GroupKey,
-    { sample: string | null; rows: InvoiceRow[] }
-  >();
-  for (const inv of invoices) {
-    const basis = tab === "done" ? inv.completed_at : inv.created_at;
-    if (!basis) continue;
-    const key = groupKeyFor(basis, now);
-    if (!groups.has(key)) {
-      groups.set(key, { sample: basis, rows: [] });
-      groupOrder.push(key);
-    }
-    groups.get(key)!.rows.push(inv);
-  }
+  // 추가 로드 API로 넘길 현재 필터(q/type/from/to)만 담은 쿼리스트링.
+  const apiSp = new URLSearchParams();
+  if (q) apiSp.set("q", q);
+  if (customerType !== "all") apiSp.set("type", customerType);
+  if (from) apiSp.set("from", from);
+  if (to) apiSp.set("to", to);
+  const filterQuery = apiSp.toString();
 
   // 쿼리스트링 헬퍼 (탭 전환 시 필터 유지)
   const buildHref = (overrides: Partial<{ tab: Tab }>) => {
@@ -351,28 +130,28 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
 
       {/* 상태 탭 (숨김 보기에서는 숨김) */}
       {!viewDeleted && (
-      <div className="mb-4 flex gap-2 border-b border-zinc-200">
-        <Link
-          href={buildHref({ tab: "pending" })}
-          className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition ${
-            tab === "pending"
-              ? "border-zinc-900 text-zinc-900"
-              : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          대기
-        </Link>
-        <Link
-          href={buildHref({ tab: "done" })}
-          className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition ${
-            tab === "done"
-              ? "border-zinc-900 text-zinc-900"
-              : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          완료
-        </Link>
-      </div>
+        <div className="mb-4 flex gap-2 border-b border-zinc-200">
+          <Link
+            href={buildHref({ tab: "pending" })}
+            className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition ${
+              tab === "pending"
+                ? "border-zinc-900 text-zinc-900"
+                : "border-transparent text-zinc-500 hover:text-zinc-900"
+            }`}
+          >
+            대기
+          </Link>
+          <Link
+            href={buildHref({ tab: "done" })}
+            className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition ${
+              tab === "done"
+                ? "border-zinc-900 text-zinc-900"
+                : "border-transparent text-zinc-500 hover:text-zinc-900"
+            }`}
+          >
+            완료
+          </Link>
+        </div>
       )}
 
       {/* 검색 + 필터 */}
@@ -462,7 +241,16 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
             </UploadButton>
           </div>
         )
+      ) : paginate ? (
+        // 완료 탭(활성): 클라이언트 "더 보기" 페이지네이션
+        <CompletedList
+          initialRows={invoices}
+          initialCursor={nextCursor}
+          initialHasMore={hasMore}
+          filterQuery={filterQuery}
+        />
       ) : (
+        // 대기 탭 / 삭제 보기: 평면 목록 전체 서버 렌더(페이지네이션 없음)
         <BulkSelectProvider>
           <BulkBar
             allIds={invoices.map((i) => i.id)}
@@ -471,131 +259,16 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
             noun="송장"
             hideVerb="삭제"
           />
-          {groupOrder.map((key) => {
-            const g = groups.get(key)!;
-            const completedCount = g.rows.filter(
-              (r) => r.status === "completed"
-            ).length;
-            const partialCount = g.rows.filter(
-              (r) => r.status === "completed_partial"
-            ).length;
-            const defaultOpen = key === "today" || key === "yesterday";
-            return (
-              <InvoiceGroup
-                key={key}
-                label={labelFor(key, g.sample)}
-                totalCount={g.rows.length}
-                completedCount={completedCount}
-                partialCount={partialCount}
-                defaultOpen={defaultOpen}
-              >
-                <InvoiceTable
-                  rows={g.rows}
-                  tab={tab}
-                  selectable={true}
-                  viewDeleted={viewDeleted}
-                />
-              </InvoiceGroup>
-            );
-          })}
+          <div className="border border-zinc-200 rounded-lg overflow-hidden">
+            <InvoiceTable
+              rows={invoices}
+              tab={tab}
+              selectable={true}
+              viewDeleted={viewDeleted}
+            />
+          </div>
         </BulkSelectProvider>
       )}
-    </div>
-  );
-}
-
-function InvoiceTable({
-  rows,
-  tab,
-  selectable,
-  viewDeleted,
-}: {
-  rows: InvoiceRow[];
-  tab: Tab;
-  selectable: boolean;
-  viewDeleted: boolean;
-}) {
-  return (
-    <div>
-      {/* 헤더 */}
-      <div className="hidden sm:flex items-center gap-3 px-4 py-3 bg-zinc-50 border-b border-zinc-200 text-xs font-medium text-zinc-600">
-        {selectable && <span className="w-4 shrink-0" />}
-        <div className="flex-1 grid grid-cols-12 gap-3">
-          <div className="col-span-3">송장번호</div>
-        <div className="col-span-2">주문번호</div>
-        <div className="col-span-2">수령인</div>
-        <div className="col-span-1 text-center">분류</div>
-        <div className="col-span-1 text-center">진행</div>
-        <div className="col-span-1 text-center">상태</div>
-          <div className="col-span-2 text-center">
-            {viewDeleted ? "삭제" : tab === "done" ? "완료" : "등록"}
-          </div>
-        </div>
-      </div>
-
-      {/* 행 */}
-      {rows.map((inv) => {
-        const dateText =
-          tab === "done"
-            ? inv.completed_at
-              ? formatDateShort(inv.completed_at)
-              : "-"
-            : formatDateShort(inv.created_at);
-        return (
-          <div
-            key={inv.id}
-            className="flex items-center gap-3 px-4 border-b border-zinc-100 last:border-b-0 hover:bg-zinc-50 transition"
-          >
-            {selectable && (
-              <div className="shrink-0">
-                <BulkCheckbox id={inv.id} />
-              </div>
-            )}
-            <Link
-              href={`/warehouse/invoices/${inv.id}`}
-              className="flex-1 min-w-0 block sm:grid sm:grid-cols-12 gap-3 py-3 text-sm"
-            >
-            <div className="sm:col-span-3 font-mono text-zinc-900 truncate flex items-center gap-1.5">
-              <span className="truncate">{inv.invoice_no}</span>
-              {matchBadge(inv.match_tag)}
-            </div>
-            <div className="sm:col-span-2 font-mono text-xs text-zinc-600 truncate">
-              {inv.order_no ?? <span className="text-zinc-300">-</span>}
-            </div>
-            <div className="sm:col-span-2 text-zinc-700 truncate">
-              <span className="sm:hidden text-zinc-400 text-xs mr-1">
-                수령인:
-              </span>
-              {inv.recipient_name ?? <span className="text-zinc-300">-</span>}
-              {inv.recipient_phone && (
-                <span className="text-xs text-zinc-400 ml-1">
-                  {inv.recipient_phone}
-                </span>
-              )}
-            </div>
-            <div className="sm:col-span-1 sm:text-center">
-              <span className="sm:hidden text-zinc-400 text-xs mr-1">분류:</span>
-              {customerTypeBadge(inv.customer_type)}
-            </div>
-            <div className="sm:col-span-1 sm:text-center text-zinc-600 text-xs">
-              <span className="sm:hidden text-zinc-400 mr-1">진행:</span>
-              {inv.scanned_qty} / {inv.total_qty}
-            </div>
-            <div className="sm:col-span-1 sm:text-center">
-              {statusBadge(inv.status)}
-            </div>
-            <div className="sm:col-span-2 sm:text-center text-zinc-500 text-xs">
-              <span className="sm:hidden text-zinc-400 mr-1">
-                {viewDeleted ? "삭제:" : tab === "done" ? "완료:" : "등록:"}
-              </span>
-              {viewDeleted
-                ? `${inv.deleted_at ? formatDateShort(inv.deleted_at) : "-"} · ${inv.deleted_by_name ?? "(알 수 없음)"}`
-                : dateText}
-            </div>
-            </Link>
-          </div>
-        );
-      })}
     </div>
   );
 }
