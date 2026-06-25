@@ -3,10 +3,9 @@ import { auth } from "@/auth";
 import { query, withTransaction } from "@/lib/db";
 import { readUploadedXlsx } from "@/lib/upload";
 
-// GET: 업로드 묶음(발주서+송장) 목록 (로그인 필수)
-// ★ BYTEA(order_file_data/invoice_file_data)는 절대 SELECT 안 함 — 존재 여부 플래그만.
-//   파일 다운로드는 /upload-batches/[id]/file 라우트에서 별도로.
-// 최근 100개까지(데이터 적어 충분, 많아지면 페이지네이션 도입).
+// GET: 업로드 내역(등록 단위) 목록 (로그인 필수)
+// ★ BYTEA(file_data)는 절대 SELECT 안 함 — 존재 여부/파일명/목록만.
+//   파일은 한 batch에 N개일 수 있음. 현 UI 호환을 위해 각 kind의 "첫 파일"도 같이 제공.
 export async function GET() {
   try {
     const session = await auth();
@@ -21,28 +20,48 @@ export async function GET() {
       `SELECT
          b.id,
          b.status,
-         b.order_filename,
-         (b.order_file_data IS NOT NULL)   AS has_order_file,
-         b.order_uploaded_at,
-         uo.nickname AS order_uploaded_by_name,
-         b.invoice_filename,
-         (b.invoice_file_data IS NOT NULL) AS has_invoice_file,
-         b.invoice_uploaded_at,
-         ui.nickname AS invoice_uploaded_by_name,
+         EXISTS (SELECT 1 FROM upload_files f
+                  WHERE f.batch_id = b.id AND f.kind = 'order')   AS has_order_file,
+         EXISTS (SELECT 1 FROM upload_files f
+                  WHERE f.batch_id = b.id AND f.kind = 'invoice') AS has_invoice_file,
+         (SELECT f.filename FROM upload_files f
+           WHERE f.batch_id = b.id AND f.kind = 'order'
+           ORDER BY f.id LIMIT 1)   AS order_filename,
+         (SELECT f.filename FROM upload_files f
+           WHERE f.batch_id = b.id AND f.kind = 'invoice'
+           ORDER BY f.id LIMIT 1)   AS invoice_filename,
+         (SELECT f.uploaded_at FROM upload_files f
+           WHERE f.batch_id = b.id AND f.kind = 'order'
+           ORDER BY f.id LIMIT 1)   AS order_uploaded_at,
+         (SELECT f.uploaded_at FROM upload_files f
+           WHERE f.batch_id = b.id AND f.kind = 'invoice'
+           ORDER BY f.id LIMIT 1)   AS invoice_uploaded_at,
+         (SELECT uo.nickname FROM upload_files f
+            LEFT JOIN users uo ON f.uploaded_by = uo.id
+           WHERE f.batch_id = b.id AND f.kind = 'order'
+           ORDER BY f.id LIMIT 1)   AS order_uploaded_by_name,
+         (SELECT ui.nickname FROM upload_files f
+            LEFT JOIN users ui ON f.uploaded_by = ui.id
+           WHERE f.batch_id = b.id AND f.kind = 'invoice'
+           ORDER BY f.id LIMIT 1)   AS invoice_uploaded_by_name,
+         COALESCE((
+           SELECT json_agg(json_build_object(
+                    'id', f.id, 'kind', f.kind, 'filename', f.filename
+                  ) ORDER BY f.id)
+             FROM upload_files f WHERE f.batch_id = b.id
+         ), '[]'::json) AS files,
          b.inserted_items,
          b.inserted_invoices,
          b.skipped_invoices,
          b.created_at
        FROM upload_batches b
-       LEFT JOIN users uo ON b.order_uploaded_by   = uo.id
-       LEFT JOIN users ui ON b.invoice_uploaded_by = ui.id
        ORDER BY b.created_at DESC, b.id DESC
        LIMIT 100`
     );
 
     return NextResponse.json({ batches: result.rows });
   } catch (error) {
-    console.error("업로드 묶음 목록 조회 에러:", error);
+    console.error("업로드 내역 목록 조회 에러:", error);
     return NextResponse.json(
       { error: "서버 오류가 발생했습니다." },
       { status: 500 }
@@ -50,10 +69,10 @@ export async function GET() {
   }
 }
 
-// POST: 파일 한쪽만 올려 waiting 묶음에 보관(stash). 파싱/송장생성 없음 — 순수 보관.
-//   - batchId 없음 → 새 waiting batch 생성(해당 kind 측만 채움, 반대쪽 NULL).
-//   - batchId 있음 → 그 waiting batch의 "빈" kind 측을 채움(이미 차 있으면 409).
-//   양쪽이 다 차도 여기선 status를 그대로 waiting으로 둔다. 승격은 /commit 라우트.
+// POST: 파일 한쪽만 올려 waiting 내역에 보관(stash). 파싱/송장생성 없음 — 순수 보관.
+//   - batchId 없음 → 새 waiting batch 생성 + upload_files에 파일 1행.
+//   - batchId 있음 → 그 waiting batch에 파일 append (한 kind에 여러 개 허용).
+//   양쪽(order/invoice)이 모두 있으면 readyToCommit=true. 승격은 /commit 라우트.
 export async function POST(request: Request) {
   try {
     const session = await auth();
@@ -87,35 +106,33 @@ export async function POST(request: Request) {
     if (!read.ok) {
       return NextResponse.json({ error: read.error }, { status: 400 });
     }
-
-    // kind는 화이트리스트 검증 완료 → 컬럼명 안전하게 구성
-    const dataCol = kind === "order" ? "order_file_data" : "invoice_file_data";
-    const fnCol = kind === "order" ? "order_filename" : "invoice_filename";
-    const mimeCol = kind === "order" ? "order_mime" : "invoice_mime";
-    const byCol =
-      kind === "order" ? "order_uploaded_by" : "invoice_uploaded_by";
-    const atCol =
-      kind === "order" ? "order_uploaded_at" : "invoice_uploaded_at";
     const mime = file.type || null;
     const label = kind === "order" ? "발주서" : "송장";
 
     // ── 새 waiting batch 생성 ──
     if (batchIdRaw == null || batchIdRaw === "") {
-      const ins = await query(
-        `INSERT INTO upload_batches
-           (${dataCol}, ${fnCol}, ${mimeCol}, ${byCol}, ${atCol}, status, created_by)
-         VALUES ($1, $2, $3, $4, NOW(), 'waiting', $5)
-         RETURNING id`,
-        [read.buffer, file.name, mime, userId, userId]
-      );
+      const result = await withTransaction(async (client) => {
+        const ins = await client.query(
+          `INSERT INTO upload_batches (status, created_by)
+           VALUES ('waiting', $1) RETURNING id`,
+          [userId]
+        );
+        const batchId = ins.rows[0].id;
+        await client.query(
+          `INSERT INTO upload_files (batch_id, kind, file_data, filename, mime, uploaded_by)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [batchId, kind, read.buffer, file.name, mime, userId]
+        );
+        return batchId;
+      });
       return NextResponse.json({
-        id: ins.rows[0].id,
+        id: result,
         status: "waiting",
-        message: `${label} 파일을 대기 묶음으로 저장했습니다.`,
+        message: `${label} 파일을 저장했습니다.`,
       });
     }
 
-    // ── 기존 waiting batch의 빈 측 채우기 ──
+    // ── 기존 waiting batch에 파일 추가 ──
     const batchId = Number(batchIdRaw);
     if (!Number.isInteger(batchId) || batchId <= 0) {
       return NextResponse.json(
@@ -125,48 +142,40 @@ export async function POST(request: Request) {
     }
 
     try {
-      const result = await withTransaction(async (client) => {
-        // 동시성: 행 잠금 후 상태/빈측 확인
+      const readyToCommit = await withTransaction(async (client) => {
         const sel = await client.query(
-          `SELECT status,
-                  (order_file_data   IS NOT NULL) AS has_order_file,
-                  (invoice_file_data IS NOT NULL) AS has_invoice_file
-             FROM upload_batches
-            WHERE id = $1
-            FOR UPDATE`,
+          `SELECT status FROM upload_batches WHERE id = $1 FOR UPDATE`,
           [batchId]
         );
         if (sel.rows.length === 0) {
-          throw new HttpError(404, "묶음을 찾을 수 없습니다.");
+          throw new HttpError(404, "내역을 찾을 수 없습니다.");
         }
-        const row = sel.rows[0];
-        if (row.status !== "waiting") {
-          throw new HttpError(409, "이미 처리된 묶음입니다.");
-        }
-        const sideFilled =
-          kind === "order" ? row.has_order_file : row.has_invoice_file;
-        if (sideFilled) {
-          throw new HttpError(409, `이미 ${label} 파일이 있습니다.`);
+        if (sel.rows[0].status !== "waiting") {
+          throw new HttpError(409, "이미 처리된 내역입니다.");
         }
 
         await client.query(
-          `UPDATE upload_batches
-              SET ${dataCol} = $2, ${fnCol} = $3, ${mimeCol} = $4,
-                  ${byCol} = $5, ${atCol} = NOW(), updated_at = NOW()
-            WHERE id = $1`,
-          [batchId, read.buffer, file.name, mime, userId]
+          `INSERT INTO upload_files (batch_id, kind, file_data, filename, mime, uploaded_by)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [batchId, kind, read.buffer, file.name, mime, userId]
         );
 
-        const readyToCommit =
-          kind === "order" ? row.has_invoice_file : row.has_order_file;
-        return { readyToCommit };
+        // 발주서·송장 둘 다 생겼나
+        const ex = await client.query(
+          `SELECT
+             bool_or(kind = 'order')   AS has_order,
+             bool_or(kind = 'invoice') AS has_invoice
+           FROM upload_files WHERE batch_id = $1`,
+          [batchId]
+        );
+        return Boolean(ex.rows[0].has_order && ex.rows[0].has_invoice);
       });
 
       return NextResponse.json({
         id: batchId,
         status: "waiting",
-        readyToCommit: result.readyToCommit, // 양쪽 다 찼으니 이제 승격 가능
-        message: `${label} 파일을 묶음에 추가했습니다.`,
+        readyToCommit,
+        message: `${label} 파일을 추가했습니다.`,
       });
     } catch (e) {
       if (e instanceof HttpError) {
@@ -175,7 +184,7 @@ export async function POST(request: Request) {
       throw e;
     }
   } catch (error) {
-    console.error("업로드 묶음 stash 에러:", error);
+    console.error("업로드 내역 저장 에러:", error);
     return NextResponse.json(
       { error: "서버 오류가 발생했습니다." },
       { status: 500 }

@@ -18,8 +18,8 @@ class HttpError extends Error {
   }
 }
 
-// POST: waiting 묶음에 발주서+송장이 모두 차면 committed로 승격.
-//   - 저장된 두 버퍼로 commitUploadBatch(existingBatchId) 호출 → 파싱·검수·invoices 생성.
+// POST: waiting 내역에 발주서+송장이 모두 있으면 committed로 등록(승격).
+//   - upload_files에 저장된 버퍼들(발주서 N · 송장 M)을 로드 → commitUploadBatch.
 //   - ★ 이중 승격 방지: 행 잠금(FOR UPDATE) + status='waiting' 확인.
 //   - 검수·매칭·파싱은 commitUploadBatch 안의 기존 로직 그대로(불변).
 export async function POST(request: Request, { params }: RouteContext) {
@@ -46,40 +46,44 @@ export async function POST(request: Request, { params }: RouteContext) {
     };
     try {
       const result = await withTransaction(async (client) => {
-        // 행 잠금 + 상태/파일 확인 (이중 승격·경합 방지)
+        // 행 잠금 + 상태 확인 (이중 승격·경합 방지)
         const sel = await client.query(
-          `SELECT status,
-                  order_file_data, order_filename, order_mime,
-                  invoice_file_data, invoice_filename, invoice_mime
-             FROM upload_batches
-            WHERE id = $1
-            FOR UPDATE`,
+          `SELECT status FROM upload_batches WHERE id = $1 FOR UPDATE`,
           [batchId]
         );
         if (sel.rows.length === 0) {
-          throw new HttpError(404, "묶음을 찾을 수 없습니다.");
+          throw new HttpError(404, "내역을 찾을 수 없습니다.");
         }
-        const b = sel.rows[0];
-        if (b.status !== "waiting") {
-          throw new HttpError(409, "이미 처리된 묶음입니다.");
+        if (sel.rows[0].status !== "waiting") {
+          throw new HttpError(409, "이미 처리된 내역입니다.");
         }
-        if (!b.order_file_data || !b.invoice_file_data) {
+
+        // 저장된 파일들 로드 (kind별 버퍼 배열)
+        const files = await client.query(
+          `SELECT kind, file_data
+             FROM upload_files
+            WHERE batch_id = $1
+            ORDER BY id`,
+          [batchId]
+        );
+        const orderBuffers: Buffer[] = [];
+        const invoiceBuffers: Buffer[] = [];
+        for (const row of files.rows) {
+          if (row.kind === "order") orderBuffers.push(row.file_data);
+          else if (row.kind === "invoice") invoiceBuffers.push(row.file_data);
+        }
+        if (orderBuffers.length === 0 || invoiceBuffers.length === 0) {
           throw new HttpError(
             400,
-            "발주서와 송장이 모두 있어야 승격할 수 있습니다."
+            "발주서와 송장이 모두 있어야 등록할 수 있습니다."
           );
         }
 
-        // 저장된 버퍼로 기존 confirm 로직 재사용 (existingBatchId → waiting을 committed로)
         return commitUploadBatch(client, {
-          orderBuffer: b.order_file_data,
-          invoiceBuffer: b.invoice_file_data,
-          orderFilename: b.order_filename,
-          invoiceFilename: b.invoice_filename,
-          orderMime: b.order_mime,
-          invoiceMime: b.invoice_mime,
+          orderBuffers,
+          invoiceBuffers,
           userId,
-          existingBatchId: batchId,
+          batchId,
         });
       });
       summary = {
@@ -91,7 +95,6 @@ export async function POST(request: Request, { params }: RouteContext) {
       if (e instanceof HttpError) {
         return NextResponse.json({ error: e.message }, { status: e.status });
       }
-      // 파싱 실패는 사용자 입력 문제 → 400 (confirm과 동일한 메시지)
       if (e instanceof UploadParseError) {
         return NextResponse.json({ error: e.message }, { status: 400 });
       }
@@ -120,7 +123,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       message: "송장 등록이 완료되었습니다.",
     });
   } catch (error) {
-    console.error("업로드 묶음 승격 에러:", error);
+    console.error("업로드 내역 승격 에러:", error);
     return NextResponse.json(
       { error: "서버 오류가 발생했습니다." },
       { status: 500 }

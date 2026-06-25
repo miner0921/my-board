@@ -20,16 +20,12 @@ export class UploadParseError extends Error {
 }
 
 export type CommitUploadParams = {
-  orderBuffer: Buffer;
-  invoiceBuffer: Buffer;
-  orderFilename: string;
-  invoiceFilename: string;
-  orderMime: string | null;
-  invoiceMime: string | null;
+  // 발주서/송장 파일이 여러 개일 수 있음 → 버퍼 배열. 파싱 후 행을 concat해 매칭.
+  orderBuffers: Buffer[];
+  invoiceBuffers: Buffer[];
   userId: number;
-  // null/undefined → 새 committed batch 생성(동시 업로드, 기존 confirm 동작)
-  // 숫자 → 기존 waiting batch를 committed로 승격(파일은 이미 그 batch에 저장돼 있음)
-  existingBatchId?: number | null;
+  // 파일은 이미 upload_files에 저장돼 있고, batch 헤더도 호출측이 생성/확보한 상태.
+  batchId: number;
 };
 
 export type CommitUploadSummary = {
@@ -39,29 +35,36 @@ export type CommitUploadSummary = {
   batchId: number;
 };
 
-// 발주서+송장 버퍼로 품목/송장/매핑을 만들고 upload_batch를 committed로 만든다.
-// ★ 매칭·파싱·items/invoices/invoice_items/invoice_uploads 로직은 기존 confirm에서
-//   "그대로" 옮긴 것(동작 불변). batch 처리만 existingBatchId로 분기한다.
-//   유일한 신규 동작: upload_batches 행에 집계 3컬럼 기록(027 ledger 통합).
+// 발주서+송장 버퍼(여러 개)로 품목/송장/매핑을 만들고 batch를 committed로 마무리.
+// ★ 매칭·파싱·items/invoices/invoice_items 로직은 기존과 "글자단위 동일".
+//   바뀐 것: ① 입력을 단일 버퍼 → 버퍼 배열로 파싱·concat ② 파일 저장은 호출측(upload_files)
+//   ③ batch는 항상 기존 행을 UPDATE(임베드 INSERT 제거).
 // 반드시 호출측 withTransaction(client) 안에서 호출할 것.
 export async function commitUploadBatch(
   client: PoolClient,
   params: CommitUploadParams
 ): Promise<CommitUploadSummary> {
   const userId = params.userId;
+  const batchId = params.batchId;
 
-  // ── 파싱 (실패 시 UploadParseError → 호출측에서 400) ──
-  let orderRows: OrderRow[];
-  let invoiceRows: InvoiceRow[];
+  // ── 여러 파일 파싱 → 행 concat (입력 조립만; 파싱 함수 자체는 불변) ──
+  const orderRows: OrderRow[] = [];
+  const invoiceRows: InvoiceRow[] = [];
   try {
-    orderRows = parseOrderSheet(params.orderBuffer).rows;
-    invoiceRows = parseInvoiceSheet(params.invoiceBuffer);
+    for (const buf of params.orderBuffers) {
+      orderRows.push(...parseOrderSheet(buf).rows);
+    }
+    for (const buf of params.invoiceBuffers) {
+      invoiceRows.push(...parseInvoiceSheet(buf));
+    }
   } catch (e) {
     console.error("엑셀 파싱 실패:", e);
     throw new UploadParseError(
       "엑셀 파일을 읽을 수 없습니다. 파일을 확인해주세요."
     );
   }
+
+  // ===== 이하 매칭·등록 로직: 기존 confirm/commit과 글자단위 동일 =====
 
   // 발주서 매칭 맵
   const orderMap = new Map<string, OrderRow[]>();
@@ -105,36 +108,6 @@ export async function commitUploadBatch(
     );
     itemByNormalized.set(norm, r.rows[0].id);
     insertedItems++;
-  }
-
-  // 3-1. 업로드 묶음 — 새로 만들거나(동시 업로드) 기존 waiting batch를 쓴다(승격).
-  let batchId: number;
-  if (params.existingBatchId == null) {
-    // 새 committed batch (기존 confirm 동작 그대로 — 두 파일 바이트+메타 저장)
-    const batchRes = await client.query(
-      `INSERT INTO upload_batches (
-         order_file_data, order_filename, order_mime, order_uploaded_by, order_uploaded_at,
-         invoice_file_data, invoice_filename, invoice_mime, invoice_uploaded_by, invoice_uploaded_at,
-         status, created_by
-       )
-       VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7, $8, NOW(), 'committed', $9)
-       RETURNING id`,
-      [
-        params.orderBuffer,
-        params.orderFilename,
-        params.orderMime,
-        userId,
-        params.invoiceBuffer,
-        params.invoiceFilename,
-        params.invoiceMime,
-        userId,
-        userId,
-      ]
-    );
-    batchId = batchRes.rows[0].id;
-  } else {
-    // 기존 waiting batch 승격 — 파일은 이미 저장됨. status는 뒤에서 committed로 전환.
-    batchId = params.existingBatchId;
   }
 
   // 4. invoices + invoice_items INSERT (송장 모두 등록, onlyInOrder는 등록 X)
@@ -199,42 +172,17 @@ export async function commitUploadBatch(
     }
   }
 
-  // 4-1. batch 집계 + 새 품목 이름 기록 + (승격이면) committed로 전환. (027·028)
-  //      새 batch는 위에서 이미 committed로 INSERT됨 — 집계/이름만 채운다.
-  const newItemNames = Array.from(newItems); // 028: 상세 보기용 새 품목 이름
-  if (params.existingBatchId == null) {
-    await client.query(
-      `UPDATE upload_batches
-         SET inserted_items = $2, inserted_invoices = $3, skipped_invoices = $4,
-             inserted_item_names = $5, updated_at = NOW()
-       WHERE id = $1`,
-      [batchId, insertedItems, insertedInvoices, skippedInvoices, newItemNames]
-    );
-  } else {
-    await client.query(
-      `UPDATE upload_batches
-         SET status = 'committed',
-             inserted_items = $2, inserted_invoices = $3, skipped_invoices = $4,
-             inserted_item_names = $5, updated_at = NOW()
-       WHERE id = $1`,
-      [batchId, insertedItems, insertedInvoices, skippedInvoices, newItemNames]
-    );
-  }
+  // ===== 매칭·등록 로직 끝 (위까지 기존과 동일) =====
 
-  // 5. 업로드 이력 ledger (하위호환 — invoice_uploads 병행 기록). 같은 트랜잭션이라 원자적.
+  // 5. batch 마무리: committed + 집계 + 새 품목 이름 기록.
+  const newItemNames = Array.from(newItems); // 028: 상세 보기용
   await client.query(
-    `INSERT INTO invoice_uploads
-       (order_filename, invoice_filename,
-        inserted_items, inserted_invoices, skipped_invoices, uploaded_by)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [
-      params.orderFilename,
-      params.invoiceFilename,
-      insertedItems,
-      insertedInvoices,
-      skippedInvoices,
-      userId,
-    ]
+    `UPDATE upload_batches
+        SET status = 'committed',
+            inserted_items = $2, inserted_invoices = $3, skipped_invoices = $4,
+            inserted_item_names = $5, updated_at = NOW()
+      WHERE id = $1`,
+    [batchId, insertedItems, insertedInvoices, skippedInvoices, newItemNames]
   );
 
   return { insertedItems, insertedInvoices, skippedInvoices, batchId };
