@@ -23,6 +23,7 @@ type InvoiceRow = {
   completed_at: string | null;
   total_qty: number;
   scanned_qty: number;
+  match_tag: string | null;
 };
 
 function statusBadge(status: string) {
@@ -59,6 +60,25 @@ function formatDateShort(date: string) {
   }).formatToParts(new Date(date));
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   return `${get("month")}/${get("day")} ${get("hour")}:${get("minute")}`;
+}
+
+// 매칭 태그 배지 (목록 송장번호 뒤) — matched는 차분, invoice_only는 노란 강조.
+function matchBadge(tag: string | null) {
+  if (tag === "invoice_only") {
+    return (
+      <span className="inline-block px-1.5 py-0.5 text-[11px] rounded bg-amber-50 text-amber-700 border border-amber-200">
+        송장만
+      </span>
+    );
+  }
+  if (tag === "matched") {
+    return (
+      <span className="inline-block px-1.5 py-0.5 text-[11px] rounded bg-zinc-100 text-zinc-500 border border-zinc-200">
+        매칭
+      </span>
+    );
+  }
+  return null;
 }
 
 // 발주서 시트별 customer_type 매핑 (마이그레이션 007 참고)
@@ -180,9 +200,8 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
     to: toParam,
     deleted: delParam,
   } = await searchParams;
-  const isAdmin =
-    ((session.user as { role?: string }).role ?? "user") === "admin";
-  const viewDeleted = isAdmin && delParam === "1";
+  // 삭제(soft delete)·복구·삭제내역 조회는 로그인한 작업자 전원 허용.
+  const viewDeleted = delParam === "1";
   const q = (qParam ?? "").trim();
   const tab: Tab = tabParam === "done" ? "done" : "pending";
   const customerType =
@@ -242,7 +261,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
     `SELECT
        i.id, i.invoice_no, i.order_no,
        i.recipient_name, i.recipient_phone,
-       i.status, i.customer_type, i.created_at, i.completed_at,
+       i.status, i.customer_type, i.created_at, i.completed_at, i.match_tag,
        COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
        COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
      FROM invoices i
@@ -300,7 +319,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <p className="text-sm text-zinc-500">
           {viewDeleted
-            ? "숨긴 송장 — 선택해서 복구할 수 있습니다 (검수기록 보존됨)"
+            ? "삭제한 송장 — 선택해서 복구할 수 있습니다 (검수기록 보존됨)"
             : "발주서와 송장 파일을 업로드하면 자동으로 등록됩니다"}
         </p>
         {viewDeleted ? (
@@ -312,14 +331,12 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
           </Link>
         ) : (
           <div className="flex items-center gap-2 self-start sm:self-auto">
-            {isAdmin && (
-              <Link
-                href="/warehouse/invoices?deleted=1"
-                className="px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition"
-              >
-                숨긴 항목 보기
-              </Link>
-            )}
+            <Link
+              href="/warehouse/invoices?deleted=1"
+              className="px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition"
+            >
+              삭제 항목 보기
+            </Link>
             <UploadButton className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition font-medium">
               <Upload size={16} strokeWidth={1.75} />
               발주서 및 송장 업로드
@@ -443,14 +460,13 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
         )
       ) : (
         <BulkSelectProvider>
-          {isAdmin && (
-            <BulkBar
-              allIds={invoices.map((i) => i.id)}
-              resource="invoices"
-              viewDeleted={viewDeleted}
-              noun="송장"
-            />
-          )}
+          <BulkBar
+            allIds={invoices.map((i) => i.id)}
+            resource="invoices"
+            viewDeleted={viewDeleted}
+            noun="송장"
+            hideVerb="삭제"
+          />
           {groupOrder.map((key) => {
             const g = groups.get(key)!;
             const completedCount = g.rows.filter(
@@ -469,7 +485,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
                 partialCount={partialCount}
                 defaultOpen={defaultOpen}
               >
-                <InvoiceTable rows={g.rows} tab={tab} isAdmin={isAdmin} />
+                <InvoiceTable rows={g.rows} tab={tab} selectable={true} />
               </InvoiceGroup>
             );
           })}
@@ -482,17 +498,17 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
 function InvoiceTable({
   rows,
   tab,
-  isAdmin,
+  selectable,
 }: {
   rows: InvoiceRow[];
   tab: Tab;
-  isAdmin: boolean;
+  selectable: boolean;
 }) {
   return (
     <div>
       {/* 헤더 */}
       <div className="hidden sm:flex items-center gap-3 px-4 py-3 bg-zinc-50 border-b border-zinc-200 text-xs font-medium text-zinc-600">
-        {isAdmin && <span className="w-4 shrink-0" />}
+        {selectable && <span className="w-4 shrink-0" />}
         <div className="flex-1 grid grid-cols-12 gap-3">
           <div className="col-span-3">송장번호</div>
         <div className="col-span-2">주문번호</div>
@@ -519,7 +535,7 @@ function InvoiceTable({
             key={inv.id}
             className="flex items-center gap-3 px-4 border-b border-zinc-100 last:border-b-0 hover:bg-zinc-50 transition"
           >
-            {isAdmin && (
+            {selectable && (
               <div className="shrink-0">
                 <BulkCheckbox id={inv.id} />
               </div>
@@ -528,8 +544,9 @@ function InvoiceTable({
               href={`/warehouse/invoices/${inv.id}`}
               className="flex-1 min-w-0 block sm:grid sm:grid-cols-12 gap-3 py-3 text-sm"
             >
-            <div className="sm:col-span-3 font-mono text-zinc-900 truncate">
-              {inv.invoice_no}
+            <div className="sm:col-span-3 font-mono text-zinc-900 truncate flex items-center gap-1.5">
+              <span className="truncate">{inv.invoice_no}</span>
+              {matchBadge(inv.match_tag)}
             </div>
             <div className="sm:col-span-2 font-mono text-xs text-zinc-600 truncate">
               {inv.order_no ?? <span className="text-zinc-300">-</span>}

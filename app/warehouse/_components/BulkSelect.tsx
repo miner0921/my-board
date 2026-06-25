@@ -86,11 +86,13 @@ export function BulkBar({
   resource,
   viewDeleted,
   noun,
+  hideVerb = "숨김", // 송장은 "삭제"로 전달(품목은 기본 "숨김" 유지)
 }: {
   allIds: number[];
   resource: "items" | "invoices";
   viewDeleted: boolean;
   noun: string; // "품목" | "송장"
+  hideVerb?: string;
 }) {
   const { selected, setMany, clear } = useBulk();
   const router = useRouter();
@@ -101,10 +103,10 @@ export function BulkBar({
 
   const onAction = async () => {
     if (count === 0) return;
-    const verb = viewDeleted ? "복구" : "숨김";
+    const verb = viewDeleted ? "복구" : hideVerb;
     const msg = viewDeleted
       ? `선택한 ${count}개 ${noun}을(를) 복구할까요?`
-      : `선택한 ${count}개 ${noun}을(를) 숨길까요? (복구할 수 있습니다)`;
+      : `선택한 ${count}개 ${noun}을(를) ${hideVerb}할까요? (복구할 수 있습니다)`;
     if (!confirm(msg)) return;
 
     setSubmitting(true);
@@ -160,7 +162,7 @@ export function BulkBar({
         ) : (
           <>
             <EyeOff size={15} strokeWidth={1.75} />
-            선택 숨김
+            선택 {hideVerb}
           </>
         )}
       </button>

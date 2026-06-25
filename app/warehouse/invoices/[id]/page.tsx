@@ -580,14 +580,13 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
           </div>
         )}
 
-      {isAdmin && (
-        <div className="mt-4">
-          <DeleteInvoiceButton
-            invoiceId={invoice.id}
-            invoiceNo={invoice.invoice_no}
-          />
-        </div>
-      )}
+      {/* 송장 삭제 — 로그인한 작업자 전원(soft delete, 복구 가능) */}
+      <div className="mt-4">
+        <DeleteInvoiceButton
+          invoiceId={invoice.id}
+          invoiceNo={invoice.invoice_no}
+        />
+      </div>
 
       {/* 원본 상품명 (디버깅/감사용) */}
       {invoice.raw_product_name && (
