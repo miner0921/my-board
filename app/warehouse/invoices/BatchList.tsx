@@ -12,6 +12,8 @@ import {
   Upload,
   ChevronDown,
   ChevronUp,
+  Trash2,
+  RotateCcw,
 } from "lucide-react";
 import { type ToastData, summaryToToast } from "../_components/Toast";
 
@@ -39,6 +41,9 @@ type Batch = {
   inserted_invoices: number;
   skipped_invoices: number;
   created_at: string;
+  deleted_at: string | null;
+  deleted_by_name: string | null;
+  scanned_invoice_count: number;
 };
 
 type BatchDetail = {
@@ -79,6 +84,7 @@ export default function BatchList({
   const [batches, setBatches] = useState<Batch[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [showDeleted, setShowDeleted] = useState(false); // 삭제된 등록건 보기 토글
   // 방금 등록/승격된 내역 강조 (타이머 없이 state로만 — 모달 닫으면 unmount되어 초기화)
   const [justDoneId, setJustDoneId] = useState<number | null>(null);
   // 상세 보기
@@ -89,7 +95,9 @@ export default function BatchList({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/warehouse/upload-batches");
+      const res = await fetch(
+        `/api/warehouse/upload-batches${showDeleted ? "?deleted=1" : ""}`
+      );
       const data = await res.json();
       if (res.ok) setBatches(data.batches ?? []);
     } catch (e) {
@@ -97,12 +105,73 @@ export default function BatchList({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showDeleted]);
 
-  // 마운트 + 부모 신호(업로드/대기저장 성공) 때마다 새로고침
+  // 마운트 + 부모 신호(업로드/대기저장 성공) + 보기 전환 때마다 새로고침
   useEffect(() => {
     load();
   }, [load, reloadSignal]);
+
+  // 등록건 통째 삭제 (스캔된 게 있으면 경고)
+  async function handleDeleteBatch(b: Batch) {
+    const msg =
+      b.scanned_invoice_count > 0
+        ? `이 등록건에 ${b.scanned_invoice_count}건이 이미 스캔(검수)되었습니다.\n` +
+          `삭제해도 검수 기록은 보존됩니다. 삭제할까요?`
+        : `이 등록건을 삭제할까요? (복구할 수 있습니다)`;
+    if (!confirm(msg)) return;
+    setBusyId(b.id);
+    try {
+      const res = await fetch(`/api/warehouse/upload-batches/${b.id}/delete`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "삭제에 실패했습니다.");
+        return;
+      }
+      onToast({
+        tone: "blue",
+        title: "등록건을 삭제했습니다.",
+        desc: `송장 ${data.affected}건 삭제 · 복구할 수 있습니다`,
+      });
+      onChanged();
+      await load();
+    } catch (err) {
+      console.error(err);
+      alert("네트워크 오류가 발생했습니다.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // 삭제된 등록건 복구
+  async function handleRestoreBatch(b: Batch) {
+    if (!confirm("이 등록건을 복구할까요?")) return;
+    setBusyId(b.id);
+    try {
+      const res = await fetch(`/api/warehouse/upload-batches/${b.id}/restore`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "복구에 실패했습니다.");
+        return;
+      }
+      onToast({
+        tone: "green",
+        title: "등록건을 복구했습니다.",
+        desc: `송장 ${data.affected}건 복구`,
+      });
+      onChanged();
+      await load();
+    } catch (err) {
+      console.error(err);
+      alert("네트워크 오류가 발생했습니다.");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   // 상세 보기 토글 (펼칠 때 lazy fetch)
   async function toggleDetail(id: number) {
@@ -183,10 +252,22 @@ export default function BatchList({
 
   return (
     <section className="mt-6 pt-5 border-t border-zinc-100">
-      <h3 className="text-sm font-semibold text-zinc-900 mb-1">업로드 내역</h3>
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-sm font-semibold text-zinc-900">
+          {showDeleted ? "삭제된 등록건" : "업로드 내역"}
+        </h3>
+        <button
+          type="button"
+          onClick={() => setShowDeleted((v) => !v)}
+          className="text-xs text-zinc-500 underline hover:text-zinc-900"
+        >
+          {showDeleted ? "← 활성 등록건" : "삭제된 등록건 보기"}
+        </button>
+      </div>
       <p className="text-xs text-zinc-400 mb-3">
-        발주서와 송장을 모두 올리면 등록됩니다. 한쪽만 올리면 대기 상태로
-        저장됩니다.
+        {showDeleted
+          ? "삭제된 등록건 — 복구할 수 있습니다 (검수기록 보존됨)."
+          : "발주서와 송장을 모두 올리면 등록됩니다. 한쪽만 올리면 대기 상태로 저장됩니다."}
       </p>
 
       {loading && batches.length === 0 ? (
@@ -200,6 +281,7 @@ export default function BatchList({
             const busy = busyId === b.id;
             const done = justDoneId === b.id;
             const open = openId === b.id;
+            const isDeleted = !!b.deleted_at; // 삭제된 등록건 보기에서만 true
             const missingKind: "order" | "invoice" | null = isWaiting
               ? b.has_order_file
                 ? "invoice"
@@ -216,16 +298,18 @@ export default function BatchList({
                   ? "amber"
                   : "green";
 
-            // 왼쪽 띠 색: 파랑(처리중) > 노랑(대기) > 완료 세부색
-            const stripe = busy
-              ? "border-l-blue-500"
-              : isWaiting
-                ? "border-l-amber-400"
-                : compTone === "gray"
-                  ? "border-l-zinc-400"
-                  : compTone === "amber"
-                    ? "border-l-amber-400"
-                    : "border-l-green-500";
+            // 왼쪽 띠 색: 삭제됨(회색) > 파랑(처리중) > 노랑(대기) > 완료 세부색
+            const stripe = isDeleted
+              ? "border-l-zinc-300"
+              : busy
+                ? "border-l-blue-500"
+                : isWaiting
+                  ? "border-l-amber-400"
+                  : compTone === "gray"
+                    ? "border-l-zinc-400"
+                    : compTone === "amber"
+                      ? "border-l-amber-400"
+                      : "border-l-green-500";
             // 방금 처리분만 테두리 살짝 굵게 — ring 색도 행 상태색 따름(0건이 초록으로 안 보이게)
             const ring = done
               ? compTone === "gray"
@@ -295,7 +379,7 @@ export default function BatchList({
                     hasFile={b.has_order_file}
                     filename={b.order_filename}
                     uploadedByName={b.order_uploaded_by_name}
-                    canFill={isWaiting}
+                    canFill={isWaiting && !isDeleted}
                     busy={busy}
                     onFill={(e) => handleFill(b, "order", e)}
                   />
@@ -306,13 +390,13 @@ export default function BatchList({
                     hasFile={b.has_invoice_file}
                     filename={b.invoice_filename}
                     uploadedByName={b.invoice_uploaded_by_name}
-                    canFill={isWaiting}
+                    canFill={isWaiting && !isDeleted}
                     busy={busy}
                     onFill={(e) => handleFill(b, "invoice", e)}
                   />
                 </div>
 
-                {/* 완료: 상세 보기 토글 */}
+                {/* 완료: 상세 보기 토글 (삭제 보기에서도 내역 확인 가능) */}
                 {!isWaiting && !busy && (
                   <div className="mt-2">
                     <button
@@ -339,6 +423,35 @@ export default function BatchList({
                           </p>
                         )}
                       </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 푸터: 활성=삭제 / 삭제됨=삭제정보+복구 */}
+                {!busy && (
+                  <div className="mt-2 pt-2 border-t border-zinc-100 flex items-center gap-2">
+                    {isDeleted ? (
+                      <>
+                        <span className="text-zinc-400">
+                          삭제: {formatKst(b.deleted_at)} ·{" "}
+                          {b.deleted_by_name ?? "(알 수 없음)"}
+                        </span>
+                        <button
+                          onClick={() => handleRestoreBatch(b)}
+                          className="ml-auto inline-flex items-center gap-1 rounded border border-zinc-300 px-2 py-0.5 text-zinc-700 hover:bg-zinc-50"
+                        >
+                          <RotateCcw size={12} strokeWidth={2} />
+                          복구
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => handleDeleteBatch(b)}
+                        className="ml-auto inline-flex items-center gap-1 text-red-600 hover:text-red-800"
+                      >
+                        <Trash2 size={12} strokeWidth={2} />
+                        등록건 삭제
+                      </button>
                     )}
                   </div>
                 )}

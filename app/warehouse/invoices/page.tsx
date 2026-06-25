@@ -24,6 +24,8 @@ type InvoiceRow = {
   total_qty: number;
   scanned_qty: number;
   match_tag: string | null;
+  deleted_at: string | null;
+  deleted_by_name: string | null;
 };
 
 function statusBadge(status: string) {
@@ -262,6 +264,8 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
        i.id, i.invoice_no, i.order_no,
        i.recipient_name, i.recipient_phone,
        i.status, i.customer_type, i.created_at, i.completed_at, i.match_tag,
+       i.deleted_at,
+       (SELECT du.nickname FROM users du WHERE du.id = i.deleted_by) AS deleted_by_name,
        COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
        COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
      FROM invoices i
@@ -485,7 +489,12 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
                 partialCount={partialCount}
                 defaultOpen={defaultOpen}
               >
-                <InvoiceTable rows={g.rows} tab={tab} selectable={true} />
+                <InvoiceTable
+                  rows={g.rows}
+                  tab={tab}
+                  selectable={true}
+                  viewDeleted={viewDeleted}
+                />
               </InvoiceGroup>
             );
           })}
@@ -499,10 +508,12 @@ function InvoiceTable({
   rows,
   tab,
   selectable,
+  viewDeleted,
 }: {
   rows: InvoiceRow[];
   tab: Tab;
   selectable: boolean;
+  viewDeleted: boolean;
 }) {
   return (
     <div>
@@ -517,7 +528,7 @@ function InvoiceTable({
         <div className="col-span-1 text-center">진행</div>
         <div className="col-span-1 text-center">상태</div>
           <div className="col-span-2 text-center">
-            {tab === "done" ? "완료" : "등록"}
+            {viewDeleted ? "삭제" : tab === "done" ? "완료" : "등록"}
           </div>
         </div>
       </div>
@@ -574,7 +585,12 @@ function InvoiceTable({
               {statusBadge(inv.status)}
             </div>
             <div className="sm:col-span-2 sm:text-center text-zinc-500 text-xs">
-              {dateText}
+              <span className="sm:hidden text-zinc-400 mr-1">
+                {viewDeleted ? "삭제:" : tab === "done" ? "완료:" : "등록:"}
+              </span>
+              {viewDeleted
+                ? `${inv.deleted_at ? formatDateShort(inv.deleted_at) : "-"} · ${inv.deleted_by_name ?? "(알 수 없음)"}`
+                : dateText}
             </div>
             </Link>
           </div>

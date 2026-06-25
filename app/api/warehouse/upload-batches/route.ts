@@ -5,8 +5,8 @@ import { readUploadedXlsx } from "@/lib/upload";
 
 // GET: 업로드 내역(등록 단위) 목록 (로그인 필수)
 // ★ BYTEA(file_data)는 절대 SELECT 안 함 — 존재 여부/파일명/목록만.
-//   파일은 한 batch에 N개일 수 있음. 현 UI 호환을 위해 각 kind의 "첫 파일"도 같이 제공.
-export async function GET() {
+//   ?deleted=1 → 삭제된 등록건만, 기본 → 활성(deleted_at IS NULL).
+export async function GET(request: Request) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -16,10 +16,23 @@ export async function GET() {
       );
     }
 
+    const url = new URL(request.url);
+    const viewDeleted = url.searchParams.get("deleted") === "1";
+    const deletedFilter = viewDeleted
+      ? "b.deleted_at IS NOT NULL"
+      : "b.deleted_at IS NULL";
+
     const result = await query(
       `SELECT
          b.id,
          b.status,
+         b.deleted_at,
+         (SELECT du.nickname FROM users du WHERE du.id = b.deleted_by)
+                                                       AS deleted_by_name,
+         (SELECT count(*)::int FROM invoices iv
+           WHERE iv.upload_batch_id = b.id
+             AND iv.deleted_at IS NULL
+             AND iv.scan_started_at IS NOT NULL)       AS scanned_invoice_count,
          EXISTS (SELECT 1 FROM upload_files f
                   WHERE f.batch_id = b.id AND f.kind = 'order')   AS has_order_file,
          EXISTS (SELECT 1 FROM upload_files f
@@ -55,6 +68,7 @@ export async function GET() {
          b.skipped_invoices,
          b.created_at
        FROM upload_batches b
+       WHERE ${deletedFilter}
        ORDER BY b.created_at DESC, b.id DESC
        LIMIT 100`
     );
