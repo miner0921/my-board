@@ -47,6 +47,9 @@ type BatchDetail = {
   skippedInvoices: number;
   itemNames: string[];
   invoiceNos: string[];
+  matchedCount: number;
+  invoiceOnlyCount: number;
+  unmatchedOrderCount: number;
 };
 
 // 항상 한국시간으로 표시 (환경 TZ 무관).
@@ -360,6 +363,11 @@ function BatchDetailView({ detail }: { detail: BatchDetail }) {
             · 건너뜀 {detail.skippedInvoices}건
           </span>
         )}
+      </div>
+
+      <div className="text-zinc-500">
+        매칭 {detail.matchedCount} · 송장만 {detail.invoiceOnlyCount} · 발주서만{" "}
+        {detail.unmatchedOrderCount}
       </div>
 
       <div>

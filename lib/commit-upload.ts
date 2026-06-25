@@ -81,6 +81,20 @@ export async function commitUploadBatch(
     return { invoice: inv, order: hits && hits.length > 0 ? hits[0] : null };
   });
 
+  // (가산·읽기만) 발주서-only 집계 — 송장에 매칭되지 않은 발주서 행.
+  // 매칭 규칙은 위 pairs/orderMap이 산출한 것 그대로 읽어 분류만 계산(동작 불변).
+  const usedOrderKeys = new Set<string>();
+  for (const inv of invoiceRows) {
+    const key = orderMatchKey(inv.orderNo);
+    if (orderMap.has(key)) usedOrderKeys.add(key);
+  }
+  const unmatchedOrderNos: string[] = [];
+  for (const [key, rows] of orderMap.entries()) {
+    if (!usedOrderKeys.has(key)) {
+      for (const r of rows) unmatchedOrderNos.push(r.orderNo);
+    }
+  }
+
   // 1. 기존 items + 별칭 → 정규화 품명 인덱스 (매칭 단일 지점, 별칭 인식)
   const itemByNormalized = await loadItemIndex((t) => client.query(t));
 
@@ -128,9 +142,9 @@ export async function commitUploadBatch(
          recipient_name, recipient_phone, recipient_address,
          recipient_postal_code, delivery_note, order_no,
          raw_product_name, sender_name, customer_type, created_by,
-         upload_batch_id
+         upload_batch_id, match_tag
        )
-       VALUES ($1, 'pending', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       VALUES ($1, 'pending', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        ON CONFLICT (invoice_no) DO NOTHING
        RETURNING id`,
       [
@@ -146,6 +160,8 @@ export async function commitUploadBatch(
         p.order?.customerType ?? null,
         userId,
         batchId,
+        // (가산) 매칭 태그 — pairs가 이미 산출한 분류를 기록만
+        p.order ? "matched" : "invoice_only",
       ]
     );
 
@@ -180,9 +196,19 @@ export async function commitUploadBatch(
     `UPDATE upload_batches
         SET status = 'committed',
             inserted_items = $2, inserted_invoices = $3, skipped_invoices = $4,
-            inserted_item_names = $5, updated_at = NOW()
+            inserted_item_names = $5,
+            unmatched_order_count = $6, unmatched_order_nos = $7,
+            updated_at = NOW()
       WHERE id = $1`,
-    [batchId, insertedItems, insertedInvoices, skippedInvoices, newItemNames]
+    [
+      batchId,
+      insertedItems,
+      insertedInvoices,
+      skippedInvoices,
+      newItemNames,
+      unmatchedOrderNos.length,
+      unmatchedOrderNos,
+    ]
   );
 
   return { insertedItems, insertedInvoices, skippedInvoices, batchId };

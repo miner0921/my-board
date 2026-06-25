@@ -27,7 +27,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
     const batchRes = await query(
       `SELECT inserted_items, inserted_invoices, skipped_invoices,
-              inserted_item_names
+              inserted_item_names, unmatched_order_count
          FROM upload_batches
         WHERE id = $1`,
       [batchId]
@@ -40,14 +40,20 @@ export async function GET(_request: Request, { params }: RouteContext) {
     }
     const b = batchRes.rows[0];
 
-    // 이 내역으로 등록된 송장번호 (upload_batch_id 링크)
+    // 이 내역으로 등록된 송장번호 + 매칭 태그 (upload_batch_id 링크)
     const invRes = await query(
-      `SELECT invoice_no
+      `SELECT invoice_no, match_tag
          FROM invoices
         WHERE upload_batch_id = $1
         ORDER BY id`,
       [batchId]
     );
+    const matchedCount = invRes.rows.filter(
+      (r) => r.match_tag === "matched"
+    ).length;
+    const invoiceOnlyCount = invRes.rows.filter(
+      (r) => r.match_tag === "invoice_only"
+    ).length;
 
     return NextResponse.json({
       insertedItems: b.inserted_items,
@@ -55,6 +61,9 @@ export async function GET(_request: Request, { params }: RouteContext) {
       skippedInvoices: b.skipped_invoices,
       itemNames: (b.inserted_item_names ?? []) as string[],
       invoiceNos: invRes.rows.map((r) => r.invoice_no as string),
+      matchedCount,
+      invoiceOnlyCount,
+      unmatchedOrderCount: b.unmatched_order_count ?? 0,
     });
   } catch (error) {
     console.error("업로드 내역 상세 조회 에러:", error);
