@@ -101,7 +101,7 @@ export async function commitUploadBatch(
   // 2. 새 품목 식별 (전체 송장 순회)
   const newItems = new Set<string>();
   for (const p of pairs) {
-    const raw = p.invoice.productNameRaw || p.order?.productNameRaw || "";
+    const raw = p.order?.productNameRaw || p.invoice.productNameRaw || "";
     const parsed = parseProductName(raw);
     for (const it of parsed.items) {
       if (!itemByNormalized.has(it.normalizedName)) {
@@ -129,7 +129,7 @@ export async function commitUploadBatch(
   let skippedInvoices = 0;
 
   for (const p of pairs) {
-    const raw = p.invoice.productNameRaw || p.order?.productNameRaw || "";
+    const raw = p.order?.productNameRaw || p.invoice.productNameRaw || "";
     const parsed = parseProductName(raw);
     const deliveryNote = combineDeliveryNote(
       p.order?.deliveryNote ?? "",
