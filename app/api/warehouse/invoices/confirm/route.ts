@@ -119,6 +119,30 @@ export async function POST(request: Request) {
           insertedItems++;
         }
 
+        // 3-1. 업로드 묶음(원본 파일 보관) INSERT — 두 파일 동시 업로드라 곧바로 committed.
+        //      같은 트랜잭션이라 송장 생성과 원자적(파일만 저장되고 송장 없는 불일치 방지).
+        const batchRes = await client.query(
+          `INSERT INTO upload_batches (
+             order_file_data, order_filename, order_mime, order_uploaded_by, order_uploaded_at,
+             invoice_file_data, invoice_filename, invoice_mime, invoice_uploaded_by, invoice_uploaded_at,
+             status, created_by
+           )
+           VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7, $8, NOW(), 'committed', $9)
+           RETURNING id`,
+          [
+            orderRead.buffer,
+            orderFile.name,
+            orderFile.type || null,
+            userId,
+            invoiceRead.buffer,
+            invoiceFile.name,
+            invoiceFile.type || null,
+            userId,
+            userId,
+          ]
+        );
+        const batchId = batchRes.rows[0].id;
+
         // 4. invoices + invoice_items INSERT (송장 모두 등록, onlyInOrder는 등록 X)
         let insertedInvoices = 0;
         let skippedInvoices = 0;
@@ -137,9 +161,10 @@ export async function POST(request: Request) {
                invoice_no, status,
                recipient_name, recipient_phone, recipient_address,
                recipient_postal_code, delivery_note, order_no,
-               raw_product_name, sender_name, customer_type, created_by
+               raw_product_name, sender_name, customer_type, created_by,
+               upload_batch_id
              )
-             VALUES ($1, 'pending', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+             VALUES ($1, 'pending', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
              ON CONFLICT (invoice_no) DO NOTHING
              RETURNING id`,
             [
@@ -154,6 +179,7 @@ export async function POST(request: Request) {
               p.invoice.senderName || null,
               p.order?.customerType ?? null,
               userId,
+              batchId,
             ]
           );
 
