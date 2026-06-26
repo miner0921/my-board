@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { InvoiceListRow } from "@/lib/invoice-list";
+import type { InvoiceListRow, InvoiceTab } from "@/lib/invoice-list";
 import { BulkSelectProvider, BulkBar } from "../_components/BulkSelect";
 import { InvoiceTable } from "./_list";
 
@@ -10,19 +10,25 @@ type Props = {
   initialCursor: string | null;
   initialHasMore: boolean;
   // 현재 필터(q/type/from/to)를 그대로 담은 쿼리스트링. 추가 로드 API에 전달한다.
-  // (tab/cursor 제외 — API는 항상 완료 탭, cursor는 여기서 붙임)
+  // (tab/deleted/cursor 제외 — 아래에서 붙인다)
   filterQuery: string;
+  // 탭/삭제 보기 — 기본 완료 탭(done/false). loadMore URL과 BulkBar에 반영.
+  tab?: InvoiceTab;
+  viewDeleted?: boolean;
 };
 
-// 완료 탭 목록 — 평면(날짜 그룹 없음) + keyset "더 보기" 페이지네이션.
+// 송장 목록(세 탭 공용) — 평면(날짜 그룹 없음) + keyset "더 보기" 페이지네이션.
 //   · 서버가 1페이지(100건) SSR → "더 보기"로 커서 다음 100건 fetch → 누적 append.
 //   · 필터/검색은 서버 SSR + API 모두 DB 전체에 WHERE로 적용 → 로드 안 한 과거 건도
 //     검색 결과에 포함되고, 그 결과를 100건씩 이어 본다.
-export default function CompletedList({
+//   · 정렬축은 탭별(완료=completed_at·대기=created_at·삭제=deleted_at) — 서버가 결정.
+export default function PaginatedInvoiceList({
   initialRows,
   initialCursor,
   initialHasMore,
   filterQuery,
+  tab = "done",
+  viewDeleted = false,
 }: Props) {
   const [rows, setRows] = useState<InvoiceListRow[]>(initialRows);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
@@ -34,6 +40,9 @@ export default function CompletedList({
     setLoading(true);
     try {
       const sp = new URLSearchParams(filterQuery);
+      // 탭/삭제 보기 — 완료 탭(기본)은 파라미터 생략(API 기본값과 동일).
+      if (tab === "pending") sp.set("tab", "pending");
+      if (viewDeleted) sp.set("deleted", "1");
       sp.set("cursor", cursor);
       const res = await fetch(`/api/warehouse/invoices?${sp.toString()}`);
       const data = await res.json().catch(() => ({}));
@@ -57,12 +66,12 @@ export default function CompletedList({
       <BulkBar
         allIds={rows.map((r) => r.id)}
         resource="invoices"
-        viewDeleted={false}
+        viewDeleted={viewDeleted}
         noun="송장"
         hideVerb="삭제"
       />
       <div className="border border-zinc-200 rounded-lg overflow-hidden">
-        <InvoiceTable rows={rows} tab="done" selectable viewDeleted={false} />
+        <InvoiceTable rows={rows} tab={tab} selectable viewDeleted={viewDeleted} />
       </div>
 
       {/* "더 보기" — 태블릿 친화 큰 버튼 + 현재 표시 건수 */}

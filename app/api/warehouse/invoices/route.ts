@@ -5,14 +5,16 @@ import {
   decodeCursor,
   INVOICE_PAGE_SIZE,
   type InvoiceListFilters,
+  type InvoiceTab,
 } from "@/lib/invoice-list";
 
 const ALLOWED_TYPES = new Set(["business", "individual", "retail", "none"]);
 
-// GET: 완료 탭 keyset 페이지네이션 (로그인 필수).
+// GET: 송장 목록 keyset 페이지네이션 (로그인 필수).
 //   ★ 필터(q/type/from/to)는 DB 전체에 WHERE로 적용한다 — "로드된 것만 검색"이 아님.
 //   cursor 이후 INVOICE_PAGE_SIZE건 + hasMore/nextCursor 반환. BYTEA/이미지 없음.
-//   완료(활성) 송장 전용 — 대기 탭/삭제 보기는 페이지 SSR에서 처리.
+//   tab(pending|done, 기본 done)·deleted(=1) 파라미터로 세 탭 공용. 정렬축은
+//   fetchInvoiceList가 탭별로 결정(완료=completed_at·대기=created_at·삭제=deleted_at).
 export async function GET(request: Request) {
   try {
     const session = await auth();
@@ -35,9 +37,14 @@ export async function GET(request: Request) {
     const to = isDate(toRaw) ? toRaw : "";
     const cursor = decodeCursor(url.searchParams.get("cursor"));
 
+    // 탭/삭제 보기 — 화이트리스트 검증, 기본 done/false(파라미터 없으면 완료 탭).
+    const tab: InvoiceTab =
+      url.searchParams.get("tab") === "pending" ? "pending" : "done";
+    const viewDeleted = url.searchParams.get("deleted") === "1";
+
     const filters: InvoiceListFilters = {
-      tab: "done",
-      viewDeleted: false,
+      tab,
+      viewDeleted,
       q,
       customerType,
       from,

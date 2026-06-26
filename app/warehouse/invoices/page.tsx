@@ -4,18 +4,13 @@ import { auth } from "@/auth";
 import { Upload } from "lucide-react";
 import UploadButton from "./UploadButton";
 import ViewToggleButton from "./ViewToggleButton";
-import CompletedList from "./CompletedList";
-import { InvoiceTable } from "./_list";
+import PaginatedInvoiceList from "./PaginatedInvoiceList";
 import {
   fetchInvoiceList,
   INVOICE_PAGE_SIZE,
   type InvoiceListFilters,
   type InvoiceTab,
 } from "@/lib/invoice-list";
-import {
-  BulkSelectProvider,
-  BulkBar,
-} from "../_components/BulkSelect";
 
 const ALLOWED_TYPES = new Set(["business", "individual", "retail", "none"]);
 
@@ -63,11 +58,12 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
 
   const filters: InvoiceListFilters = { tab, viewDeleted, q, customerType, from, to };
 
-  // 완료 탭(활성)만 페이지네이션 — 무한 누적 대비. 대기/삭제 보기는 현행대로 전체.
-  const paginate = tab === "done" && !viewDeleted;
-  const { rows: invoices, nextCursor, hasMore } = paginate
-    ? await fetchInvoiceList(filters, { limit: INVOICE_PAGE_SIZE })
-    : await fetchInvoiceList(filters);
+  // 세 탭(완료/대기/삭제) 모두 keyset 페이지네이션 — 무한 누적 대비.
+  //   1페이지(INVOICE_PAGE_SIZE)만 SSR하고, 나머지는 클라이언트 "더 보기"로.
+  const { rows: invoices, nextCursor, hasMore } = await fetchInvoiceList(
+    filters,
+    { limit: INVOICE_PAGE_SIZE }
+  );
 
   // 추가 로드 API로 넘길 현재 필터(q/type/from/to)만 담은 쿼리스트링.
   const apiSp = new URLSearchParams();
@@ -242,33 +238,19 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
             </UploadButton>
           </div>
         )
-      ) : paginate ? (
-        // 완료 탭(활성): 클라이언트 "더 보기" 페이지네이션
-        <CompletedList
+      ) : (
+        // 세 탭(완료/대기/삭제) 공용: 1페이지 SSR + 클라이언트 "더 보기" 페이지네이션
+        // key: 화면 데이터를 결정하는 값(탭/보기/검색/필터)을 모두 포함 → 전환 시
+        //   client useState(initialRows)가 강제 리마운트되어 새 SSR 데이터로 초기화됨.
+        <PaginatedInvoiceList
+          key={`${tab}-${viewDeleted}-${q}-${customerType}-${from}-${to}`}
           initialRows={invoices}
           initialCursor={nextCursor}
           initialHasMore={hasMore}
           filterQuery={filterQuery}
+          tab={tab}
+          viewDeleted={viewDeleted}
         />
-      ) : (
-        // 대기 탭 / 삭제 보기: 평면 목록 전체 서버 렌더(페이지네이션 없음)
-        <BulkSelectProvider>
-          <BulkBar
-            allIds={invoices.map((i) => i.id)}
-            resource="invoices"
-            viewDeleted={viewDeleted}
-            noun="송장"
-            hideVerb="삭제"
-          />
-          <div className="border border-zinc-200 rounded-lg overflow-hidden">
-            <InvoiceTable
-              rows={invoices}
-              tab={tab}
-              selectable={true}
-              viewDeleted={viewDeleted}
-            />
-          </div>
-        </BulkSelectProvider>
       )}
     </div>
   );

@@ -4,7 +4,7 @@ import { BulkCheckbox } from "../_components/BulkSelect";
 
 // ─────────────────────────────────────────────────────────────
 // 송장 목록 공용 렌더 조각. "use client" 없음(shared) — 서버 컴포넌트
-// (page.tsx: 대기/삭제 보기)와 클라이언트 컴포넌트(CompletedList: 완료 탭)
+// (page.tsx)와 클라이언트 컴포넌트(PaginatedInvoiceList: 세 탭 공용 "더 보기")
 // 양쪽에서 그대로 import해 쓴다. 순수 함수 + JSX만(서버 전용 의존 없음).
 //
 // 평면 목록(날짜 그룹 헤더 없음). 원래 행 컬럼은 100% 보존하고, 맨 앞에

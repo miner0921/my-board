@@ -70,8 +70,16 @@ export async function fetchInvoiceList(
   opts: { limit?: number; cursor?: InvoiceCursor | null } = {}
 ): Promise<{ rows: InvoiceListRow[]; nextCursor: string | null; hasMore: boolean }> {
   const { tab, viewDeleted, q, customerType, from, to } = filters;
-  // 날짜 필터·정렬축: 대기=등록일(created_at), 완료=완료일(completed_at).
-  const orderCol = tab === "done" ? "i.completed_at" : "i.created_at";
+  // 정렬축(=날짜 필터·keyset 축): 삭제 보기=삭제일(deleted_at),
+  //   완료=완료일(completed_at), 대기=등록일(created_at).
+  //   sortField = 커서 row 접근용 컬럼명, orderCol = SQL 식별자.
+  //   세 축 모두 페이지네이션 대상에선 NOT NULL 보장(WHERE 조건) → keyset 안전.
+  const sortField = viewDeleted
+    ? "deleted_at"
+    : tab === "done"
+      ? "completed_at"
+      : "created_at";
+  const orderCol = `i.${sortField}`;
   const paginated = typeof opts.limit === "number";
 
   const conditions: string[] = [
@@ -113,23 +121,23 @@ export async function fetchInvoiceList(
     conditions.push(`${orderCol} < ($${params.length}::date + interval '1 day')`);
   }
 
-  // keyset 커서 — 완료 탭 페이지네이션에서만. (completed_at, id) < (커서) = "더 과거".
-  if (paginated && tab === "done" && opts.cursor) {
+  // keyset 커서 — 페이지네이션 시. (정렬축, id) < (커서) = "더 과거".
+  //   정렬축은 탭별(완료=completed_at·대기=created_at·삭제=deleted_at).
+  if (paginated && opts.cursor) {
     params.push(new Date(opts.cursor.t));
     const pAt = params.length;
     params.push(opts.cursor.id);
     const pId = params.length;
-    conditions.push(`(i.completed_at, i.id) < ($${pAt}::timestamp, $${pId}::int)`);
+    conditions.push(`(${orderCol}, i.id) < ($${pAt}::timestamp, $${pId}::int)`);
   }
 
   const where = `WHERE ${conditions.join(" AND ")}`;
 
-  // 완료 탭 페이지네이션은 (completed_at, id) DESC 안정 정렬(동률 타이브레이크 →
-  // 페이지 경계 누락/중복 방지). 그 외(대기/삭제 보기 전체)는 기존 동작 그대로.
-  const orderBy =
-    paginated && tab === "done"
-      ? `ORDER BY i.completed_at DESC, i.id DESC`
-      : `ORDER BY ${orderCol} DESC NULLS LAST`;
+  // 페이지네이션은 (정렬축, id) DESC 안정 정렬(동률 타이브레이크 →
+  // 페이지 경계 누락/중복 방지). 비페이지네이션(전체)은 기존 NULLS LAST 동작 유지.
+  const orderBy = paginated
+    ? `ORDER BY ${orderCol} DESC, i.id DESC`
+    : `ORDER BY ${orderCol} DESC NULLS LAST`;
 
   let limitClause = "";
   if (paginated) {
@@ -163,11 +171,12 @@ export async function fetchInvoiceList(
     raw = raw.slice(0, opts.limit!);
   }
 
-  // 다음 커서: 마지막 행의 (completed_at, id). 정규화 전 원본(Date)에서 뽑는다.
+  // 다음 커서: 마지막 행의 (정렬축, id). 정규화 전 원본(Date)에서 뽑는다.
+  //   정렬축은 sortField(완료=completed_at·대기=created_at·삭제=deleted_at).
   let nextCursor: string | null = null;
-  if (hasMore && tab === "done" && raw.length > 0) {
+  if (hasMore && raw.length > 0) {
     const last = raw[raw.length - 1];
-    const c = last.completed_at;
+    const c = last[sortField];
     const t = c instanceof Date ? c.getTime() : new Date(c).getTime();
     nextCursor = encodeCursor({ t, id: last.id });
   }
