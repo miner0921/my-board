@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { Upload } from "lucide-react";
 import UploadButton from "./UploadButton";
+import ViewToggleButton from "./ViewToggleButton";
 import CompletedList from "./CompletedList";
 import { InvoiceTable } from "./_list";
 import {
@@ -106,20 +107,20 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
             : "발주서와 송장 파일을 업로드하면 자동으로 등록됩니다"}
         </p>
         {viewDeleted ? (
-          <Link
+          <ViewToggleButton
             href="/warehouse/invoices"
-            className="px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition self-start sm:self-auto"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition self-start sm:self-auto disabled:opacity-50 disabled:cursor-not-allowed"
           >
             ← 활성 송장
-          </Link>
+          </ViewToggleButton>
         ) : (
           <div className="flex items-center gap-2 self-start sm:self-auto">
-            <Link
+            <ViewToggleButton
               href="/warehouse/invoices?deleted=1"
-              className="px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               삭제 항목 보기
-            </Link>
+            </ViewToggleButton>
             <UploadButton className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition font-medium">
               <Upload size={16} strokeWidth={1.75} />
               발주서 및 송장 업로드
