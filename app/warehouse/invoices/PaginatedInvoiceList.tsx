@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import type { InvoiceListRow, InvoiceTab } from "@/lib/invoice-list";
-import { BulkSelectProvider, BulkBar } from "../_components/BulkSelect";
 import { InvoiceTable } from "./_list";
 
 type Props = {
@@ -62,14 +61,7 @@ export default function PaginatedInvoiceList({
   };
 
   return (
-    <BulkSelectProvider>
-      <BulkBar
-        allIds={rows.map((r) => r.id)}
-        resource="invoices"
-        viewDeleted={viewDeleted}
-        noun="송장"
-        hideVerb="삭제"
-      />
+    <>
       <div className="border border-zinc-200 rounded-lg overflow-hidden">
         <InvoiceTable rows={rows} tab={tab} selectable viewDeleted={viewDeleted} />
       </div>
@@ -92,6 +84,6 @@ export default function PaginatedInvoiceList({
           )
         )}
       </div>
-    </BulkSelectProvider>
+    </>
   );
 }

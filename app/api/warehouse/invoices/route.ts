@@ -42,6 +42,14 @@ export async function GET(request: Request) {
       url.searchParams.get("tab") === "pending" ? "pending" : "done";
     const viewDeleted = url.searchParams.get("deleted") === "1";
 
+    // 상태 필터 — 탭별 화이트리스트(아니면 "all").
+    const statusRaw = url.searchParams.get("status") ?? "all";
+    const statusAllowed =
+      tab === "done"
+        ? ["all", "completed", "completed_partial"]
+        : ["all", "waiting", "inspecting"];
+    const statusFilter = statusAllowed.includes(statusRaw) ? statusRaw : "all";
+
     const filters: InvoiceListFilters = {
       tab,
       viewDeleted,
@@ -49,6 +57,7 @@ export async function GET(request: Request) {
       customerType,
       from,
       to,
+      statusFilter,
     };
 
     const { rows, nextCursor, hasMore } = await fetchInvoiceList(filters, {

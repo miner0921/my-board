@@ -27,6 +27,10 @@ export type InvoiceListFilters = {
   customerType: string; // "all" | business | individual | retail | none
   from: string; // "" | YYYY-MM-DD
   to: string; // "" | YYYY-MM-DD
+  // 상태 필터(탭별 의미, "all"=전체):
+  //   완료 탭: "completed" | "completed_partial"  (status 기반, WHERE)
+  //   대기 탭: "waiting"(scanned=0) | "inspecting"(scanned>0)  (진행률 기반, HAVING)
+  statusFilter: string;
 };
 
 // 완료 탭 keyset 커서. (completed_at, id) 기준 안정 페이지네이션.
@@ -69,7 +73,7 @@ export async function fetchInvoiceList(
   filters: InvoiceListFilters,
   opts: { limit?: number; cursor?: InvoiceCursor | null } = {}
 ): Promise<{ rows: InvoiceListRow[]; nextCursor: string | null; hasMore: boolean }> {
-  const { tab, viewDeleted, q, customerType, from, to } = filters;
+  const { tab, viewDeleted, q, customerType, from, to, statusFilter } = filters;
   // 정렬축(=날짜 필터·keyset 축): 삭제 보기=삭제일(deleted_at),
   //   완료=완료일(completed_at), 대기=등록일(created_at).
   //   sortField = 커서 row 접근용 컬럼명, orderCol = SQL 식별자.
@@ -99,6 +103,12 @@ export async function fetchInvoiceList(
       conditions.push(
         `i.status IN ('completed', 'completed_partial') AND i.completed_at IS NOT NULL`
       );
+      // 완료 탭 상태 필터(완료/부분완료) — status 기반. 전체면 위 IN 그대로.
+      if (statusFilter === "completed") {
+        conditions.push(`i.status = 'completed'`);
+      } else if (statusFilter === "completed_partial") {
+        conditions.push(`i.status = 'completed_partial'`);
+      }
     } else {
       conditions.push(`i.status = 'pending'`);
     }
@@ -133,6 +143,17 @@ export async function fetchInvoiceList(
 
   const where = `WHERE ${conditions.join(" AND ")}`;
 
+  // 대기 탭 상태 필터(대기/검수중) — 진행률 집계라 HAVING으로(WHERE 불가).
+  //   대기 = 스캔된 것 0, 검수중 = 1개 이상 스캔됨. 정렬축/keyset과 별개로 적용.
+  let havingClause = "";
+  if (!viewDeleted && tab === "pending") {
+    if (statusFilter === "waiting") {
+      havingClause = `HAVING COALESCE(SUM(ii.scanned_count), 0) = 0`;
+    } else if (statusFilter === "inspecting") {
+      havingClause = `HAVING COALESCE(SUM(ii.scanned_count), 0) > 0`;
+    }
+  }
+
   // 페이지네이션은 (정렬축, id) DESC 안정 정렬(동률 타이브레이크 →
   // 페이지 경계 누락/중복 방지). 비페이지네이션(전체)은 기존 NULLS LAST 동작 유지.
   const orderBy = paginated
@@ -159,6 +180,7 @@ export async function fetchInvoiceList(
        ON ii.invoice_id = i.id AND ii.excluded_at IS NULL
      ${where}
      GROUP BY i.id
+     ${havingClause}
      ${orderBy}
      ${limitClause}`,
     params

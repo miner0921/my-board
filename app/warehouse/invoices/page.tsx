@@ -6,6 +6,11 @@ import UploadButton from "./UploadButton";
 import ViewToggleButton from "./ViewToggleButton";
 import PaginatedInvoiceList from "./PaginatedInvoiceList";
 import InvoiceFilterControls from "./InvoiceFilterControls";
+import StatusFilterSelect from "./StatusFilterSelect";
+import {
+  BulkSelectProvider,
+  BulkActionButton,
+} from "../_components/BulkSelect";
 import {
   fetchInvoiceList,
   INVOICE_PAGE_SIZE,
@@ -28,6 +33,7 @@ type PageProps = {
     from?: string;
     to?: string;
     deleted?: string;
+    status?: string;
   }>;
 };
 
@@ -42,6 +48,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
     from: fromParam,
     to: toParam,
     deleted: delParam,
+    status: statusParam,
   } = await searchParams;
   // 삭제(soft delete)·복구·삭제내역 조회는 로그인한 작업자 전원 허용.
   const viewDeleted = delParam === "1";
@@ -54,10 +61,29 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
     !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
   const from = isDate(fromParam) ? fromParam : "";
   const to = isDate(toParam) ? toParam : "";
+  // 상태 필터 — 탭별 화이트리스트(아니면 "all"). 완료=완료/부분완료, 대기=대기/검수중.
+  const STATUS_OPTIONS =
+    tab === "done"
+      ? ["all", "completed", "completed_partial"]
+      : ["all", "waiting", "inspecting"];
+  const statusFilter =
+    statusParam && STATUS_OPTIONS.includes(statusParam) ? statusParam : "all";
   const isFiltered =
-    q !== "" || customerType !== "all" || from !== "" || to !== "";
+    q !== "" ||
+    customerType !== "all" ||
+    from !== "" ||
+    to !== "" ||
+    statusFilter !== "all";
 
-  const filters: InvoiceListFilters = { tab, viewDeleted, q, customerType, from, to };
+  const filters: InvoiceListFilters = {
+    tab,
+    viewDeleted,
+    q,
+    customerType,
+    from,
+    to,
+    statusFilter,
+  };
 
   // 세 탭(완료/대기/삭제) 모두 keyset 페이지네이션 — 무한 누적 대비.
   //   1페이지(INVOICE_PAGE_SIZE)만 SSR하고, 나머지는 클라이언트 "더 보기"로.
@@ -72,6 +98,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
   if (customerType !== "all") apiSp.set("type", customerType);
   if (from) apiSp.set("from", from);
   if (to) apiSp.set("to", to);
+  if (statusFilter !== "all") apiSp.set("status", statusFilter);
   const filterQuery = apiSp.toString();
 
   // 쿼리스트링 헬퍼 (탭 전환 시 필터 유지)
@@ -92,34 +119,22 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
       : "/warehouse/invoices";
 
   return (
+    <BulkSelectProvider>
     <div className="max-w-6xl">
-      {/* 액션 바 */}
-      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <p className="text-sm text-zinc-500">
-          {viewDeleted
-            ? "삭제한 송장 — 선택해서 복구할 수 있습니다 (검수기록 보존됨)"
-            : "발주서와 송장 파일을 업로드하면 자동으로 등록됩니다"}
-        </p>
+      {/* 버튼 줄 — 삭제 보기=되돌아가기(왼쪽), 활성=발주서 업로드(오른쪽) */}
+      <div className="mb-4 flex">
         {viewDeleted ? (
           <ViewToggleButton
             href="/warehouse/invoices"
-            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition self-start sm:self-auto disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            ← 활성 송장
+            ← 되돌아가기
           </ViewToggleButton>
         ) : (
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            <ViewToggleButton
-              href="/warehouse/invoices?deleted=1"
-              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              삭제 항목 보기
-            </ViewToggleButton>
-            <UploadButton className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition font-medium">
-              <Upload size={16} strokeWidth={1.75} />
-              발주서 및 송장 업로드
-            </UploadButton>
-          </div>
+          <UploadButton className="ml-auto inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition font-medium">
+            <Upload size={16} strokeWidth={1.75} />
+            발주서 및 송장 업로드
+          </UploadButton>
         )}
       </div>
 
@@ -175,21 +190,59 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
           </button>
         </div>
 
-        {/* 아랫줄: 분류 + 날짜(즉시 반영) + 초기화(맨 오른쪽) */}
+        {/* 아랫줄: 상태 → 분류 → 날짜(즉시 반영) → 초기화(맨 오른쪽) */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* 탭별 상태 필터 — 완료=완료/부분완료(status), 대기=대기/검수중(진행률) */}
+          {!viewDeleted && tab === "done" && (
+            <StatusFilterSelect
+              value={statusFilter}
+              options={[
+                { value: "all", label: "상태: 전체" },
+                { value: "completed", label: "완료" },
+                { value: "completed_partial", label: "부분완료" },
+              ]}
+            />
+          )}
+          {!viewDeleted && tab === "pending" && (
+            <StatusFilterSelect
+              value={statusFilter}
+              options={[
+                { value: "all", label: "상태: 전체" },
+                { value: "waiting", label: "대기" },
+                { value: "inspecting", label: "검수중" },
+              ]}
+            />
+          )}
           <InvoiceFilterControls
             customerType={customerType}
             from={from}
             to={to}
           />
-          {isFiltered && (
-            <Link
-              href={resetHref}
-              className="ml-auto px-4 py-2 border border-zinc-300 rounded-lg text-sm hover:bg-zinc-50 transition"
-            >
-              초기화
-            </Link>
-          )}
+          {/* 오른쪽 끝: 초기화 + 선택 삭제/복구 + 삭제 항목 보기 */}
+          <div className="ml-auto flex items-center gap-2">
+            {isFiltered && (
+              <Link
+                href={resetHref}
+                className="inline-flex items-center justify-center px-4 py-2 rounded-lg text-sm font-medium border border-zinc-300 text-zinc-700 hover:bg-zinc-50 transition"
+              >
+                초기화
+              </Link>
+            )}
+            <BulkActionButton
+              resource="invoices"
+              viewDeleted={viewDeleted}
+              noun="송장"
+              hideVerb="삭제"
+            />
+            {!viewDeleted && (
+              <ViewToggleButton
+                href="/warehouse/invoices?deleted=1"
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                삭제 항목 보기
+              </ViewToggleButton>
+            )}
+          </div>
         </div>
       </form>
 
@@ -225,7 +278,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
         // key: 화면 데이터를 결정하는 값(탭/보기/검색/필터)을 모두 포함 → 전환 시
         //   client useState(initialRows)가 강제 리마운트되어 새 SSR 데이터로 초기화됨.
         <PaginatedInvoiceList
-          key={`${tab}-${viewDeleted}-${q}-${customerType}-${from}-${to}`}
+          key={`${tab}-${viewDeleted}-${q}-${customerType}-${from}-${to}-${statusFilter}`}
           initialRows={invoices}
           initialCursor={nextCursor}
           initialHasMore={hasMore}
@@ -235,5 +288,6 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
         />
       )}
     </div>
+    </BulkSelectProvider>
   );
 }

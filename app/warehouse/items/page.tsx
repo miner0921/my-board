@@ -13,7 +13,8 @@ import BulkUploadButton from "./BulkUploadButton";
 import BarcodeTag from "../_components/BarcodeTag";
 import {
   BulkSelectProvider,
-  BulkBar,
+  BulkActionButton,
+  BulkSelectInline,
   BulkCheckbox,
 } from "../_components/BulkSelect";
 
@@ -147,37 +148,23 @@ export default async function ItemListPage({ searchParams }: PageProps) {
     .filter((c): c is string => !!c);
 
   return (
+    <BulkSelectProvider>
     <div className="max-w-6xl">
-      {/* 액션 바 */}
-      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <p className="text-sm text-zinc-500">
-          {viewDeleted
-            ? "숨긴 품목 — 선택해서 복구할 수 있습니다"
-            : "출고할 품목을 등록하고 관리합니다"}
-        </p>
-        <div className="flex items-center gap-2">
-          {viewDeleted ? (
-            <Link
-              href="/warehouse/items"
-              className="px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition"
-            >
-              ← 활성 품목
-            </Link>
-          ) : (
-            <>
-              {isAdmin && (
-                <Link
-                  href="/warehouse/items?deleted=1"
-                  className="px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition"
-                >
-                  숨긴 항목 보기
-                </Link>
-              )}
-              <BulkUploadButton />
-              <NewItemButton />
-            </>
-          )}
-        </div>
+      {/* 버튼 줄 — 삭제 보기=되돌아가기(왼쪽), 활성=대량 업로드·새 품목(오른쪽) */}
+      <div className="mb-4 flex">
+        {viewDeleted ? (
+          <Link
+            href="/warehouse/items"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition"
+          >
+            ← 되돌아가기
+          </Link>
+        ) : (
+          <div className="ml-auto flex items-center gap-2">
+            <BulkUploadButton />
+            <NewItemButton />
+          </div>
+        )}
       </div>
 
       {/* 검색 + 필터 (두 줄: 윗줄=검색어, 아랫줄=카테고리·정렬·체크박스·초기화) */}
@@ -208,16 +195,40 @@ export default async function ItemListPage({ searchParams }: PageProps) {
           <SortSelect value={sort} />
           <FilterCheckbox name="nobarcode" label="바코드 없음" checked={noBarcode} />
           <FilterCheckbox name="noimage" label="이미지 없음" checked={noImage} />
-          {isFiltered && (
-            <Link
-              href={viewDeleted ? "/warehouse/items?deleted=1" : "/warehouse/items"}
-              className="ml-auto px-4 py-2 border border-zinc-300 rounded-lg text-sm hover:bg-zinc-50 transition"
-            >
-              초기화
-            </Link>
-          )}
+          {/* 오른쪽 끝: 초기화 + 선택 삭제/복구 + 삭제 항목 보기 */}
+          <div className="ml-auto flex items-center gap-2">
+            {isFiltered && (
+              <Link
+                href={viewDeleted ? "/warehouse/items?deleted=1" : "/warehouse/items"}
+                className="inline-flex items-center justify-center px-4 py-2 rounded-lg text-sm font-medium border border-zinc-300 text-zinc-700 hover:bg-zinc-50 transition"
+              >
+                초기화
+              </Link>
+            )}
+            {isAdmin && (
+              <BulkActionButton
+                resource="items"
+                viewDeleted={viewDeleted}
+                noun="품목"
+                hideVerb="삭제"
+              />
+            )}
+            {isAdmin && !viewDeleted && (
+              <Link
+                href="/warehouse/items?deleted=1"
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition"
+              >
+                삭제 항목 보기
+              </Link>
+            )}
+          </div>
         </div>
       </form>
+
+      {/* 전체선택 (관리자 · 박스 없이) — 목록 있을 때만 */}
+      {isAdmin && items.length > 0 && (
+        <BulkSelectInline allIds={items.map((i) => i.id)} />
+      )}
 
       {/* 빈 상태 */}
       {items.length === 0 ? (
@@ -235,16 +246,7 @@ export default async function ItemListPage({ searchParams }: PageProps) {
           </div>
         )
       ) : (
-        <BulkSelectProvider>
-          {isAdmin && (
-            <BulkBar
-              allIds={items.map((i) => i.id)}
-              resource="items"
-              viewDeleted={viewDeleted}
-              noun="품목"
-            />
-          )}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
             {items.map((item) => {
               const isOwner =
                 session.user?.id === String(item.created_by ?? "");
@@ -316,8 +318,8 @@ export default async function ItemListPage({ searchParams }: PageProps) {
               );
             })}
           </div>
-        </BulkSelectProvider>
       )}
     </div>
+    </BulkSelectProvider>
   );
 }

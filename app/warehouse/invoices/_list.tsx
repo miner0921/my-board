@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { InvoiceListRow, InvoiceTab } from "@/lib/invoice-list";
-import { BulkCheckbox } from "../_components/BulkSelect";
+import { BulkCheckbox, BulkSelectAllCheckbox } from "../_components/BulkSelect";
 
 // ─────────────────────────────────────────────────────────────
 // 송장 목록 공용 렌더 조각. "use client" 없음(shared) — 서버 컴포넌트
@@ -17,7 +17,11 @@ import { BulkCheckbox } from "../_components/BulkSelect";
 
 export type InvoiceRow = InvoiceListRow;
 
-export function statusBadge(status: string) {
+// 상태 배지 — status + 진행률(scannedQty)로 분기.
+//   · pending & scanned=0  → 대기      · pending & scanned>0 → 검수중
+//   · completed            → 완료      · completed_partial   → 부분완료
+//   ※ "검수중"은 진행률 판정(표시 전용) — status 저장값은 그대로 pending.
+export function statusBadge(status: string, scannedQty = 0) {
   if (status === "completed") {
     return (
       <span className="inline-block px-2 py-0.5 text-xs rounded bg-green-50 text-green-700 border border-green-200">
@@ -27,8 +31,16 @@ export function statusBadge(status: string) {
   }
   if (status === "completed_partial") {
     return (
-      <span className="inline-block px-2 py-0.5 text-xs rounded bg-amber-50 text-amber-800 border border-amber-300">
+      <span className="inline-block px-2 py-0.5 text-xs rounded border border-zinc-200 bg-[#F1EFE8] text-[#5F5E5A]">
         부분 완료
+      </span>
+    );
+  }
+  // pending: 진행 중(스캔된 것 있음)이면 "검수중", 아니면 "대기".
+  if (scannedQty > 0) {
+    return (
+      <span className="inline-block px-2 py-0.5 text-xs rounded border border-[#BBD6F0] bg-[#E6F1FB] text-[#0C447C]">
+        검수중
       </span>
     );
   }
@@ -124,7 +136,11 @@ export function InvoiceTable({
     <div>
       {/* 헤더 (데스크탑) */}
       <div className="hidden sm:flex items-center gap-3 px-4 py-3 bg-zinc-50 border-b border-zinc-200 text-xs font-medium text-zinc-600">
-        {selectable && <span className="w-4 shrink-0" />}
+        {selectable && (
+          <span className="w-4 shrink-0 flex items-center justify-center">
+            <BulkSelectAllCheckbox allIds={rows.map((r) => r.id)} />
+          </span>
+        )}
         <div className="flex-1 grid grid-cols-12 gap-3">
           <div className="col-span-3">{dateLabel}</div>
           <div className="col-span-2">송장번호</div>
@@ -201,7 +217,7 @@ export function InvoiceTable({
               {/* 상태 (부분완료 포함) */}
               <div className="sm:col-span-1 sm:text-center">
                 <span className="sm:hidden text-zinc-400 text-xs mr-1">상태:</span>
-                {statusBadge(inv.status)}
+                {statusBadge(inv.status, inv.scanned_qty)}
               </div>
             </Link>
           </div>
