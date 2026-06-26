@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -10,6 +11,7 @@ import {
   Users,
   KeyRound,
   LogOut,
+  Loader2,
 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────
@@ -54,8 +56,11 @@ export default function Sidebar({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const handleLogout = async () => {
+    if (loggingOut) return; // 연타 방지
+    setLoggingOut(true);
     await signOut({ redirect: false });
     router.push("/login");
     router.refresh();
@@ -142,9 +147,14 @@ export default function Sidebar({
         <button
           type="button"
           onClick={handleLogout}
-          className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs text-zinc-400 hover:text-white hover:bg-zinc-700/50 transition-colors"
+          disabled={loggingOut}
+          className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs text-zinc-400 hover:text-white hover:bg-zinc-700/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <LogOut size={15} strokeWidth={1.75} />
+          {loggingOut ? (
+            <Loader2 size={15} strokeWidth={1.75} className="animate-spin" aria-hidden="true" />
+          ) : (
+            <LogOut size={15} strokeWidth={1.75} />
+          )}
           로그아웃
         </button>
       </div>
