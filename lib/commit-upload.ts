@@ -10,6 +10,7 @@ import {
 import { parseProductName } from "@/lib/parse-product";
 import { loadItemIndex } from "@/lib/resolve-item";
 import { isScanExemptName } from "@/lib/scan-exempt";
+import { splitProductName } from "@/lib/product-name";
 
 // 파싱 실패를 호출측에서 400으로 매핑하기 위한 전용 에러.
 export class UploadParseError extends Error {
@@ -114,11 +115,18 @@ export async function commitUploadBatch(
   // is_auto_created=TRUE → 다른 사용자도 바코드/이름/이미지 보완 가능
   let insertedItems = 0;
   for (const norm of newItems) {
+    // 자동생성 품목의 구분/종류 채우기 — "(구분)종류" 형태(괄호 뒤 종류 있음)만.
+    //   splitProductName은 괄호 뒤 종류가 없으면 category="" 반환 → 그때는 NULL로 둔다
+    //   (괄호만/괄호없음 형태는 보정 대상 아님).
+    //   ★ name(norm)은 매칭 키이므로 그대로 INSERT(재생성 금지) — category/kind 컬럼만 추가.
+    const split = splitProductName(norm);
+    const category = split.category !== "" ? split.category : null;
+    const kind = split.category !== "" ? split.kind : null;
     const r = await client.query(
-      `INSERT INTO items (name, barcode, image_data, image_mime, created_by, is_auto_created, scan_exempt)
-       VALUES ($1, NULL, NULL, NULL, $2, TRUE, $3)
+      `INSERT INTO items (name, category, kind, barcode, image_data, image_mime, created_by, is_auto_created, scan_exempt)
+       VALUES ($1, $2, $3, NULL, NULL, NULL, $4, TRUE, $5)
        RETURNING id`,
-      [norm, userId, isScanExemptName(norm)]
+      [norm, category, kind, userId, isScanExemptName(norm)]
     );
     itemByNormalized.set(norm, r.rows[0].id);
     insertedItems++;
