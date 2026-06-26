@@ -156,6 +156,7 @@ export function InvoiceTable({
             )}
             <Link
               href={`/warehouse/invoices/${inv.id}`}
+              prefetch={false}
               className="flex-1 min-w-0 block sm:grid sm:grid-cols-12 gap-3 py-3 text-sm"
             >
               {/* 일시 (맨 앞 — 새로 추가) */}
