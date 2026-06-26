@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { Upload } from "lucide-react";
+import { Upload, Search } from "lucide-react";
 import UploadButton from "./UploadButton";
 import ViewToggleButton from "./ViewToggleButton";
 import PaginatedInvoiceList from "./PaginatedInvoiceList";
+import InvoiceFilterControls from "./InvoiceFilterControls";
 import {
   fetchInvoiceList,
   INVOICE_PAGE_SIZE,
@@ -77,11 +78,8 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
   const buildHref = (overrides: Partial<{ tab: Tab }>) => {
     const sp = new URLSearchParams();
     const nextTab = overrides.tab ?? tab;
+    // 탭 전환 시 검색/필터는 초기화 — 각 탭은 필터 없는 상태로 시작(q·type·from·to 제외).
     if (nextTab !== "pending") sp.set("tab", nextTab);
-    if (q) sp.set("q", q);
-    if (customerType !== "all") sp.set("type", customerType);
-    if (from) sp.set("from", from);
-    if (to) sp.set("to", to);
     const qs = sp.toString();
     return qs ? `/warehouse/invoices?${qs}` : "/warehouse/invoices";
   };
@@ -151,64 +149,48 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
         </div>
       )}
 
-      {/* 검색 + 필터 */}
-      <form
-        action="/warehouse/invoices"
-        method="get"
-        className="mb-6 flex flex-wrap gap-2"
-      >
+      {/* 검색 + 필터 (두 줄: 윗줄=검색어, 아랫줄=분류·날짜·초기화) */}
+      <form action="/warehouse/invoices" method="get" className="mb-6 space-y-2">
         {/* tab/숨김 보기 유지 (필터 검색 시 현재 보기 보존) */}
         {tab !== "pending" && !viewDeleted && (
           <input type="hidden" name="tab" value={tab} />
         )}
         {viewDeleted && <input type="hidden" name="deleted" value="1" />}
-        <input
-          type="text"
-          name="q"
-          defaultValue={q}
-          placeholder="송장번호·주문번호·수령인·연락처로 검색"
-          className="flex-1 min-w-[200px] px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
-        />
-        <select
-          name="type"
-          defaultValue={customerType}
-          className="px-3 py-2 border border-zinc-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
-        >
-          <option value="all">분류: 전체</option>
-          <option value="business">사업자</option>
-          <option value="individual">개인</option>
-          <option value="retail">소매</option>
-          <option value="none">미분류</option>
-        </select>
-        <input
-          type="date"
-          name="from"
-          defaultValue={from}
-          aria-label="시작일"
-          className="px-3 py-2 border border-zinc-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
-        />
-        <span className="self-center text-zinc-400 text-sm">~</span>
-        <input
-          type="date"
-          name="to"
-          defaultValue={to}
-          aria-label="종료일"
-          className="px-3 py-2 border border-zinc-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
-        />
-        <button
-          type="submit"
-          className="px-4 py-2 border border-zinc-300 rounded-lg text-sm hover:bg-zinc-50 transition"
-        >
-          검색
-        </button>
-        {isFiltered && (
-          <Link
-            href={resetHref}
-            className="px-4 py-2 border border-zinc-300 rounded-lg text-sm hover:bg-zinc-50 transition"
+
+        {/* 윗줄: 검색어 + 검색 버튼 (엔터로도 제출 — form 기본 submit) */}
+        <div className="flex gap-2">
+          <input
+            type="text"
+            name="q"
+            defaultValue={q}
+            placeholder="송장번호·주문번호·수령인·연락처로 검색"
+            className="flex-1 min-w-[200px] px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
+          />
+          <button
+            type="submit"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white hover:opacity-90 transition bg-[#042C53]"
           >
-            초기화
-          </Link>
-        )}
+            <Search size={16} strokeWidth={2} />
+            검색
+          </button>
+        </div>
+
+        {/* 아랫줄: 분류 + 날짜(즉시 반영) + 초기화(맨 오른쪽) */}
+        <div className="flex flex-wrap items-center gap-2">
+          <InvoiceFilterControls
+            customerType={customerType}
+            from={from}
+            to={to}
+          />
+          {isFiltered && (
+            <Link
+              href={resetHref}
+              className="ml-auto px-4 py-2 border border-zinc-300 rounded-lg text-sm hover:bg-zinc-50 transition"
+            >
+              초기화
+            </Link>
+          )}
+        </div>
       </form>
 
       {/* 빈 상태 */}

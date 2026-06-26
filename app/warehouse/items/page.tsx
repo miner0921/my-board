@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Search } from "lucide-react";
 import { auth } from "@/auth";
 import { query } from "@/lib/db";
 import DeleteButton from "./DeleteButton";
 import SortSelect from "./SortSelect";
 import CategorySelect from "./CategorySelect";
+import FilterCheckbox from "./FilterCheckbox";
 import NewItemButton from "./NewItemButton";
 import EditItemButton from "./EditItemButton";
 import BulkUploadButton from "./BulkUploadButton";
@@ -178,56 +180,43 @@ export default async function ItemListPage({ searchParams }: PageProps) {
         </div>
       </div>
 
-      {/* 검색 + 필터 */}
-      <form
-        action="/warehouse/items"
-        method="get"
-        className="mb-6 flex flex-wrap items-center gap-2"
-      >
+      {/* 검색 + 필터 (두 줄: 윗줄=검색어, 아랫줄=카테고리·정렬·체크박스·초기화) */}
+      <form action="/warehouse/items" method="get" className="mb-6 space-y-2">
         {viewDeleted && <input type="hidden" name="deleted" value="1" />}
-        <input
-          type="text"
-          name="q"
-          defaultValue={q}
-          placeholder="품목명·바코드·품목코드로 검색"
-          className="flex-1 min-w-[200px] px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
-        />
-        <label className="inline-flex items-center gap-1.5 px-3 py-2 border border-zinc-300 rounded-lg text-sm cursor-pointer hover:bg-zinc-50 select-none">
+
+        {/* 윗줄: 검색어 + 검색 버튼 (엔터로도 제출 — form 기본 submit) */}
+        <div className="flex gap-2">
           <input
-            type="checkbox"
-            name="nobarcode"
-            value="1"
-            defaultChecked={noBarcode}
-            className="accent-zinc-900"
+            type="text"
+            name="q"
+            defaultValue={q}
+            placeholder="품목명·바코드·품목코드로 검색"
+            className="flex-1 min-w-[200px] px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
           />
-          바코드 없음
-        </label>
-        <label className="inline-flex items-center gap-1.5 px-3 py-2 border border-zinc-300 rounded-lg text-sm cursor-pointer hover:bg-zinc-50 select-none">
-          <input
-            type="checkbox"
-            name="noimage"
-            value="1"
-            defaultChecked={noImage}
-            className="accent-zinc-900"
-          />
-          이미지 없음
-        </label>
-        <CategorySelect value={cat} categories={categories} />
-        <SortSelect value={sort} />
-        <button
-          type="submit"
-          className="px-4 py-2 border border-zinc-300 rounded-lg text-sm hover:bg-zinc-50 transition"
-        >
-          검색
-        </button>
-        {isFiltered && (
-          <Link
-            href={viewDeleted ? "/warehouse/items?deleted=1" : "/warehouse/items"}
-            className="px-4 py-2 border border-zinc-300 rounded-lg text-sm hover:bg-zinc-50 transition"
+          <button
+            type="submit"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white hover:opacity-90 transition bg-[#042C53]"
           >
-            초기화
-          </Link>
-        )}
+            <Search size={16} strokeWidth={2} />
+            검색
+          </button>
+        </div>
+
+        {/* 아랫줄: 카테고리 → 정렬 → 체크박스 2개(즉시 반영) + 초기화(맨 오른쪽) */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <CategorySelect value={cat} categories={categories} />
+          <SortSelect value={sort} />
+          <FilterCheckbox name="nobarcode" label="바코드 없음" checked={noBarcode} />
+          <FilterCheckbox name="noimage" label="이미지 없음" checked={noImage} />
+          {isFiltered && (
+            <Link
+              href={viewDeleted ? "/warehouse/items?deleted=1" : "/warehouse/items"}
+              className="ml-auto px-4 py-2 border border-zinc-300 rounded-lg text-sm hover:bg-zinc-50 transition"
+            >
+              초기화
+            </Link>
+          )}
+        </div>
       </form>
 
       {/* 빈 상태 */}
