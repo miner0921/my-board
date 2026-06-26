@@ -24,6 +24,13 @@ const isUnixSocket = dbUrl.includes("/cloudsql/") || dbUrl.includes("host=/");
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: !isLocalDb && !isUnixSocket ? { rejectUnauthorized: false } : undefined,
+  // 커넥션 풀 상한: Cloud Run maxScale(8) × max(4) = 32 연결.
+  // Cloud SQL max_connections=50 안에서 관리/마이그레이션용 여유(18) 확보.
+  max: 4,
+  // 유휴 연결 30초 후 반환 — 인스턴스 스케일 다운 시 연결 누수 방지.
+  idleTimeoutMillis: 30000,
+  // 5초 내 연결 못 얻으면 에러 — 풀 포화 시 무한 대기 방지.
+  connectionTimeoutMillis: 5000,
 });
 
 // 쿼리를 쉽게 실행할 수 있는 헬퍼 함수
