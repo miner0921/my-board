@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { withTransaction } from "@/lib/db";
 import { auth } from "@/auth";
 import { logAccess } from "@/lib/audit";
@@ -6,7 +7,8 @@ import { logAccess } from "@/lib/audit";
 // ─────────────────────────────────────────────────────────────
 // POST /api/warehouse/invoices/[id]/reopen
 // 완료(completed) / 결품 완료(completed_partial) 송장을 다시 pending으로.
-// reason 필수 (trim 후 10자 이상).
+// 로그인한 작업자 전원 가능 — reopened_by에 재개한 사람 id가 남아 추적된다.
+// reason 은 선택 (빈 값이면 NULL 저장).
 // 재개 직전 상태는 invoice_reopens에 prev_* 로 보존.
 // invoice_items.scanned_count / is_added_on_scan / invoices.scan_started_at 은 보존.
 // ─────────────────────────────────────────────────────────────
@@ -24,15 +26,6 @@ export async function POST(request: Request, { params }: RouteContext) {
       return NextResponse.json(
         { error: "로그인이 필요합니다." },
         { status: 401 }
-      );
-    }
-    const role = ((session.user as { role?: string }).role ?? "user") as
-      | "user"
-      | "admin";
-    if (role !== "admin") {
-      return NextResponse.json(
-        { error: "관리자만 수동 재개할 수 있습니다." },
-        { status: 403 }
       );
     }
     const userId = Number(session.user.id);
@@ -132,6 +125,10 @@ export async function POST(request: Request, { params }: RouteContext) {
       targetId: invoiceId,
       request,
     });
+
+    // 목록(상태 탭 이동) + 상세 화면 캐시 무효화 (다음 조회 시 새로 렌더)
+    revalidatePath("/warehouse/invoices");
+    revalidatePath(`/warehouse/invoices/${invoiceId}`);
 
     return NextResponse.json({
       type: "reopened",

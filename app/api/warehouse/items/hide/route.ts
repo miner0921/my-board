@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { query } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth-helper";
 import { logAccess } from "@/lib/audit";
@@ -48,6 +49,9 @@ export async function POST(request: Request) {
     targetType: "item",
     request,
   });
+
+  // 목록 화면 캐시 무효화 (다음 조회 시 새로 렌더)
+  revalidatePath("/warehouse/items");
 
   return NextResponse.json({ ok: true, affected: result.rowCount ?? 0 });
 }

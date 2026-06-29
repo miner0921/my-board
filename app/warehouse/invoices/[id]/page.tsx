@@ -567,9 +567,9 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
           </p>
         </div>
       )}
-      {isAdmin &&
-        (invoice.status === "completed" ||
-          invoice.status === "completed_partial") && (
+      {/* 검수 재개 — 로그인한 작업자 전원(재개 이력에 재개자 id 기록) */}
+      {(invoice.status === "completed" ||
+        invoice.status === "completed_partial") && (
           <div className="mt-6">
             <ReopenButton
               invoiceId={invoice.id}

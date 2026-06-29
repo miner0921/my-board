@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, X, Plus } from "lucide-react";
+import { Check, X, Plus, Loader2 } from "lucide-react";
 import { type ToastData, summaryToToast } from "../_components/Toast";
 
 // ─────────────────────────────────────────────────────────────
@@ -178,16 +178,22 @@ export default function UploadPanel({
           <button
             onClick={handleStash}
             disabled={submitting}
-            className="px-8 py-3 bg-zinc-900 text-white rounded-lg font-medium hover:bg-zinc-800 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            className="inline-flex items-center justify-center gap-2 px-8 py-3 bg-zinc-900 text-white rounded-lg font-medium hover:bg-zinc-800 transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
+            {submitting && (
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+            )}
             {submitting ? "저장 중..." : `${presentLabel}만 대기로 저장`}
           </button>
         ) : (
           <button
             onClick={handleRegister}
             disabled={!both || submitting}
-            className="px-8 py-3 bg-zinc-900 text-white rounded-lg font-medium hover:bg-zinc-800 transition disabled:opacity-30 disabled:cursor-not-allowed"
+            className="inline-flex items-center justify-center gap-2 px-8 py-3 bg-zinc-900 text-white rounded-lg font-medium hover:bg-zinc-800 transition disabled:opacity-30 disabled:cursor-not-allowed"
           >
+            {submitting && (
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+            )}
             {submitting ? "등록 중..." : "등록하기"}
           </button>
         )}

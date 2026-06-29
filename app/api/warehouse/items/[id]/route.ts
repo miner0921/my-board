@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { auth } from "@/auth";
+import { revalidatePath } from "next/cache";
 import { readUploadedImage } from "@/lib/upload";
 import { logAccess } from "@/lib/audit";
-import { buildItemFields } from "@/lib/product-name";
+import { requireUser } from "@/lib/auth-helper";
+import { buildItemFields, MAX_BARCODE_LEN } from "@/lib/product-name";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -77,36 +79,20 @@ export async function GET(request: Request, { params }: RouteContext) {
 // image 새 파일이면 교체, removeImage="1"이면 NULL, 둘 다 아니면 기존 유지.
 export async function PUT(request: Request, { params }: RouteContext) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: "로그인이 필요합니다." },
-        { status: 401 }
-      );
-    }
+    // 권한: 로그인 필수. 역할 기준 분기(관리자=전체 / 작업자=바코드·이미지만).
+    const authz = await requireUser();
+    if (!authz.ok) return authz.response;
+    const { session, role } = authz;
+    const isAdmin = role === "admin";
 
     const { id } = await params;
     const formData = await request.formData();
     const image = formData.get("image");
     const removeImage = formData.get("removeImage") === "1";
-    const scanExempt = formData.get("scan_exempt") === "1";
 
-    // 검증 + 정규화 품명 조합을 단일 헬퍼로 (엑셀·개별 일관) — name 은 정규화형
-    const fields = buildItemFields({
-      productCodeRaw: String(formData.get("product_code") ?? ""),
-      category: String(formData.get("category") ?? ""),
-      kind: String(formData.get("kind") ?? ""),
-      barcodeRaw: String(formData.get("barcode") ?? ""),
-    });
-    if (!fields.ok) {
-      return NextResponse.json({ error: fields.error }, { status: 400 });
-    }
-    const { name, category, kind, productCode, barcode } = fields;
-
-    // 권한 체크: 자동 등록(is_auto_created=TRUE)이면 누구나 수정 가능,
-    // 직접 등록 품목은 본인만 수정 가능
+    // 기존행 로드 — 404 체크 + 작업자 경로에서 그대로 유지할 값(name 불변 = 매칭키 보존)
     const check = await query(
-      "SELECT created_by, is_auto_created FROM items WHERE id = $1",
+      "SELECT product_code, category, kind, name, scan_exempt FROM items WHERE id = $1",
       [id]
     );
     if (check.rows.length === 0) {
@@ -115,13 +101,46 @@ export async function PUT(request: Request, { params }: RouteContext) {
         { status: 404 }
       );
     }
-    const isAutoCreated = check.rows[0].is_auto_created === true;
-    const isOwner = String(check.rows[0].created_by) === session.user.id;
-    if (!isAutoCreated && !isOwner) {
-      return NextResponse.json(
-        { error: "수정 권한이 없습니다." },
-        { status: 403 }
-      );
+    const cur = check.rows[0];
+
+    // 역할별 반영 필드 결정
+    let name: string;
+    let category: string | null;
+    let kind: string | null;
+    let productCode: string | null;
+    let barcode: string | null;
+    let scanExempt: boolean;
+
+    if (isAdmin) {
+      // 관리자: 전체 필드 수정 + name 재조합 (정규화형) — 현행 그대로
+      const fields = buildItemFields({
+        productCodeRaw: String(formData.get("product_code") ?? ""),
+        category: String(formData.get("category") ?? ""),
+        kind: String(formData.get("kind") ?? ""),
+        barcodeRaw: String(formData.get("barcode") ?? ""),
+      });
+      if (!fields.ok) {
+        return NextResponse.json({ error: fields.error }, { status: 400 });
+      }
+      ({ name, category, kind, productCode, barcode } = fields);
+      scanExempt = formData.get("scan_exempt") === "1";
+    } else {
+      // 작업자: 바코드만 폼에서 수용(+이미지). 나머지는 기존값 그대로 유지.
+      //   ★ name(구분+종류)을 기존값으로 보존 → 검수 매칭 키 불변. 폼이 보낸
+      //     품목코드/구분/종류/동봉 값은 무시(프론트 우회해도 서버가 차단).
+      const barcodeRaw = String(formData.get("barcode") ?? "").trim();
+      if (barcodeRaw.length > MAX_BARCODE_LEN) {
+        return NextResponse.json(
+          { error: "바코드는 100자 이하여야 합니다." },
+          { status: 400 }
+        );
+      }
+      barcode = barcodeRaw === "" ? null : barcodeRaw;
+      productCode = cur.product_code;
+      category = cur.category;
+      kind = cur.kind;
+      name = cur.name;
+      scanExempt = cur.scan_exempt === true;
     }
 
     let imageSql: string;
@@ -161,6 +180,9 @@ export async function PUT(request: Request, { params }: RouteContext) {
       targetId: id,
       request,
     });
+
+    // 품목 목록 화면 캐시 무효화 (다음 조회 시 새로 렌더)
+    revalidatePath("/warehouse/items");
 
     return NextResponse.json({ item: result.rows[0], message: "수정 완료!" });
   } catch (error) {

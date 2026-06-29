@@ -34,6 +34,18 @@ export default function PaginatedInvoiceList({
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loading, setLoading] = useState(false);
 
+  // 서버 데이터(prop)가 바뀌면 렌더 중 내부 state 재동기화 (effect 대신 React 권장 패턴).
+  //   - router.refresh()(삭제·복구 후)일 때만 서버가 새 배열 참조를 내려주므로 그때만 실행 → 목록 즉시 갱신.
+  //   - "더 보기"(loadMore)는 서버 재렌더가 아니라 prop 참조가 그대로 → 미실행 → 누적 페이지 보존.
+  //   - 체크박스 선택(BulkSelectProvider state)도 children prop 참조가 안정적 → 미실행.
+  const [prevRows, setPrevRows] = useState(initialRows);
+  if (initialRows !== prevRows) {
+    setPrevRows(initialRows);
+    setRows(initialRows);
+    setCursor(initialCursor);
+    setHasMore(initialHasMore);
+  }
+
   const loadMore = async () => {
     if (loading || !hasMore || !cursor) return;
     setLoading(true);

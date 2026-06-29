@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { query } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth-helper";
 import { logAccess } from "@/lib/audit";
@@ -56,6 +57,9 @@ export async function PUT(request: Request, { params }: RouteContext) {
       targetId: invoiceId,
       request,
     });
+
+    // 상세 화면 캐시 무효화 (다음 조회 시 새로 렌더)
+    revalidatePath(`/warehouse/invoices/${invoiceId}`);
 
     return NextResponse.json({
       admin_memo: res.rows[0].admin_memo,

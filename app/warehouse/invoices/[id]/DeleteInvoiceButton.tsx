@@ -20,6 +20,12 @@ export default function DeleteInvoiceButton({ invoiceId, invoiceNo }: Props) {
 
   const cancelBtnRef = useRef<HTMLButtonElement | null>(null);
 
+  const handleClose = () => {
+    if (submitting) return;
+    setOpen(false);
+    setError("");
+  };
+
   useEffect(() => {
     if (open) cancelBtnRef.current?.focus();
   }, [open]);
@@ -37,12 +43,6 @@ export default function DeleteInvoiceButton({ invoiceId, invoiceNo }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, submitting]);
 
-  const handleClose = () => {
-    if (submitting) return;
-    setOpen(false);
-    setError("");
-  };
-
   const handleHide = async () => {
     setSubmitting(true);
     setError("");
@@ -59,6 +59,7 @@ export default function DeleteInvoiceButton({ invoiceId, invoiceNo }: Props) {
         return;
       }
       router.push("/warehouse/invoices");
+      router.refresh(); // Router Cache 잔상 차단 — 목록을 새로 받게
     } catch (e) {
       console.error(e);
       setError("네트워크 오류가 발생했습니다.");

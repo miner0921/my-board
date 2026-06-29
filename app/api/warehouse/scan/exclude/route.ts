@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { withTransaction } from "@/lib/db";
 import { auth } from "@/auth";
 import { logAccess } from "@/lib/audit";
@@ -266,6 +267,10 @@ export async function POST(request: Request) {
         request,
       });
     }
+
+    // 화면 캐시 무효화만 (검수·매칭·진행률 로직 불변)
+    revalidatePath(`/warehouse/invoices/${invoiceId}`);
+    revalidatePath("/warehouse/invoices");
 
     return NextResponse.json({
       type: result.completed ? "invoice_complete" : "scan_ok",

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { revalidatePath } from "next/cache";
+import { requireAdmin } from "@/lib/auth-helper";
 import { withTransaction } from "@/lib/db";
 import { readUploadedSpreadsheet } from "@/lib/upload";
 import { parseItemsSheet } from "@/lib/parse-excel";
@@ -19,11 +20,9 @@ import { logAccess } from "@/lib/audit";
 //   - name 은 정규화형(parse 단계 buildItemName)으로 저장 — 매칭 키와 동일
 export async function POST(request: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
-    }
-    const userId = Number(session.user.id);
+    const authz = await requireAdmin();
+    if (!authz.ok) return authz.response;
+    const { session, userId } = authz;
 
     const formData = await request.formData();
     const file = formData.get("file");
@@ -118,6 +117,9 @@ export async function POST(request: Request) {
       targetType: "item",
       request,
     });
+
+    // 품목 목록 화면 캐시 무효화 (다음 조회 시 새로 렌더)
+    revalidatePath("/warehouse/items");
 
     return NextResponse.json({
       result,

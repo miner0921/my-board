@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { withTransaction } from "@/lib/db";
 import { readUploadedXlsx } from "@/lib/upload";
@@ -124,6 +125,9 @@ export async function POST(request: Request) {
       targetType: "invoice",
       request,
     });
+
+    // 송장 목록 화면 캐시 무효화 (다음 조회 시 새로 렌더)
+    revalidatePath("/warehouse/invoices");
 
     return NextResponse.json({
       summary,

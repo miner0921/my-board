@@ -159,12 +159,13 @@ export default async function ItemListPage({ searchParams }: PageProps) {
           >
             ← 되돌아가기
           </Link>
-        ) : (
+        ) : isAdmin ? (
+          // 대량등록·새 품목 등록은 관리자 전용
           <div className="ml-auto flex items-center gap-2">
             <BulkUploadButton />
             <NewItemButton />
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* 검색 + 필터 (두 줄: 윗줄=검색어, 아랫줄=카테고리·정렬·체크박스·초기화) */}
@@ -248,10 +249,8 @@ export default async function ItemListPage({ searchParams }: PageProps) {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
             {items.map((item) => {
-              const isOwner =
-                session.user?.id === String(item.created_by ?? "");
-              // 자동 등록 품목은 누구나 수정 가능 (협업).
-              const canEdit = item.is_auto_created || isOwner;
+              // 수정은 로그인한 누구나 가능(작업자=바코드·이미지만, 관리자=전체).
+              //   필드 제한은 ItemForm(프론트)과 PUT API(서버)가 역할 기준으로 적용.
               return (
                 <div
                   key={item.id}
@@ -307,7 +306,7 @@ export default async function ItemListPage({ searchParams }: PageProps) {
                     </p>
 
                     {/* 활성 보기에서만 수정/삭제 버튼 (숨김 보기는 복구 바로 처리) */}
-                    {!viewDeleted && canEdit && (
+                    {!viewDeleted && (
                       <div className="flex gap-1 mt-2">
                         <EditItemButton itemId={item.id} isAdmin={isAdmin} />
                         {isAdmin && <DeleteButton itemId={item.id} />}

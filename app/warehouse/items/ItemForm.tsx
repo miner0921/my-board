@@ -28,6 +28,9 @@ export default function ItemForm(props: Props) {
   const isEdit = props.mode === "edit";
   const editItemId = props.mode === "edit" ? props.itemId : null;
   const isAdmin = props.isAdmin ?? false;
+  // 작업자(비관리자) 수정 모드: 바코드·대표 이미지만 수정 가능.
+  //   품목코드·구분·종류·동봉 입력은 비활성(기존값은 보이게). 서버(PUT)도 동일 제한.
+  const workerEdit = isEdit && !isAdmin;
 
   const [productCode, setProductCode] = useState("");
   const [category, setCategory] = useState(""); // 구분
@@ -237,6 +240,12 @@ export default function ItemForm(props: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {workerEdit && (
+        <p className="px-3 py-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
+          작업자는 바코드·대표 이미지만 수정할 수 있습니다.
+        </p>
+      )}
+
       {/* 품목코드 (선택) */}
       <div>
         <label className="block text-sm font-medium text-zinc-700 mb-1">
@@ -246,7 +255,8 @@ export default function ItemForm(props: Props) {
           type="text"
           value={productCode}
           onChange={(e) => setProductCode(e.target.value)}
-          className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 font-mono"
+          disabled={workerEdit}
+          className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 font-mono disabled:bg-zinc-100 disabled:text-zinc-400 disabled:cursor-not-allowed"
           placeholder="예: TPBEV0004"
           maxLength={100}
         />
@@ -263,7 +273,8 @@ export default function ItemForm(props: Props) {
             type="text"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
+            disabled={workerEdit}
+            className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 disabled:bg-zinc-100 disabled:text-zinc-400 disabled:cursor-not-allowed"
             placeholder="예: 1kg"
             maxLength={100}
           />
@@ -276,7 +287,8 @@ export default function ItemForm(props: Props) {
             type="text"
             value={kind}
             onChange={(e) => setKind(e.target.value)}
-            className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
+            disabled={workerEdit}
+            className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 disabled:bg-zinc-100 disabled:text-zinc-400 disabled:cursor-not-allowed"
             placeholder="예: 악마초코"
             maxLength={200}
             required
@@ -317,7 +329,8 @@ export default function ItemForm(props: Props) {
           type="checkbox"
           checked={scanExempt}
           onChange={(e) => setScanExempt(e.target.checked)}
-          className="mt-0.5 accent-zinc-900"
+          disabled={workerEdit}
+          className="mt-0.5 accent-zinc-900 disabled:cursor-not-allowed"
         />
         <span className="text-sm text-zinc-700">
           동봉(안내물)

@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { readUploadedImage } from "@/lib/upload";
 import { logAccess } from "@/lib/audit";
+import { requireAdmin } from "@/lib/auth-helper";
 import { buildItemFields } from "@/lib/product-name";
 
 // GET: 품목 목록 (로그인 필수)
@@ -62,19 +64,15 @@ export async function GET(request: Request) {
   }
 }
 
-// POST: 새 품목 등록 (로그인 필수)
+// POST: 새 품목 등록 (관리자 전용)
 // multipart/form-data: product_code(선택), category(구분), kind(종류, 필수), barcode(선택), image(선택)
 // name(품명)은 buildItemName(구분, 종류) = 정규화 품명으로 서버에서 조합 — 검수 매칭 키.
 // 구분/종류는 입력 원본 보존. product_code·barcode 빈 문자열은 NULL 로 저장.
 export async function POST(request: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: "로그인이 필요합니다." },
-        { status: 401 }
-      );
-    }
+    const authz = await requireAdmin();
+    if (!authz.ok) return authz.response;
+    const { session } = authz;
 
     const formData = await request.formData();
     const image = formData.get("image");
@@ -130,6 +128,9 @@ export async function POST(request: Request) {
       targetId: result.rows[0].id,
       request,
     });
+
+    // 품목 목록 화면 캐시 무효화 (다음 조회 시 새로 렌더)
+    revalidatePath("/warehouse/items");
 
     return NextResponse.json(
       { item: result.rows[0], message: "품목 등록 성공!" },
