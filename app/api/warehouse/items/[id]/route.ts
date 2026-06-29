@@ -124,6 +124,22 @@ export async function PUT(request: Request, { params }: RouteContext) {
       }
       ({ name, category, kind, productCode, barcode } = fields);
       scanExempt = formData.get("scan_exempt") === "1";
+
+      // 품명 중복 방지(관리자가 품명을 바꿀 수 있는 경로만) — 자기 자신 제외하고
+      //   활성 품목 중 같은 정규화 품명(name)이 있으면 거부. name 은 정규화형이라 컬럼 직접 비교.
+      //   (작업자 경로는 name 이 기존값 그대로라 검사 불필요 → else 분기엔 없음.)
+      const dup = await query(
+        "SELECT id FROM items WHERE name = $1 AND id <> $2 AND deleted_at IS NULL LIMIT 1",
+        [name, id]
+      );
+      if (dup.rows.length > 0) {
+        return NextResponse.json(
+          {
+            error: `이미 같은 품명의 품목이 있습니다: ${name}. 기존 품목을 수정하거나 다른 품명을 사용하세요.`,
+          },
+          { status: 409 }
+        );
+      }
     } else {
       // 작업자: 바코드만 폼에서 수용(+이미지). 나머지는 기존값 그대로 유지.
       //   ★ name(구분+종류)을 기존값으로 보존 → 검수 매칭 키 불변. 폼이 보낸

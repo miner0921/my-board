@@ -90,6 +90,21 @@ export async function POST(request: Request) {
     }
     const { name, category, kind, productCode, barcode } = fields;
 
+    // 품명 중복 방지 — 활성 품목 중 같은 정규화 품명(name)이 있으면 거부.
+    //   name 은 이미 정규화형이므로 컬럼 직접 비교 = 정규화 품명 비교.
+    const dup = await query(
+      "SELECT id FROM items WHERE name = $1 AND deleted_at IS NULL LIMIT 1",
+      [name]
+    );
+    if (dup.rows.length > 0) {
+      return NextResponse.json(
+        {
+          error: `이미 같은 품명의 품목이 있습니다: ${name}. 기존 품목을 수정하거나 다른 품명을 사용하세요.`,
+        },
+        { status: 409 }
+      );
+    }
+
     let imageBuffer: Buffer | null = null;
     let imageMime: string | null = null;
     if (image instanceof File && image.size > 0) {
