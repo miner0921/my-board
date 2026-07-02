@@ -2,8 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { X } from "lucide-react";
 
-export default function DeleteButton({ itemId }: { itemId: number }) {
+// variant="row"(기본): 텍스트 버튼 / variant="icon": 이미지 위 오버레이 아이콘.
+export default function DeleteButton({
+  itemId,
+  variant = "row",
+}: {
+  itemId: number;
+  variant?: "row" | "icon";
+}) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
@@ -32,6 +40,20 @@ export default function DeleteButton({ itemId }: { itemId: number }) {
       setLoading(false);
     }
   };
+
+  if (variant === "icon") {
+    return (
+      <button
+        onClick={handleDelete}
+        disabled={loading}
+        aria-label="삭제"
+        title="삭제"
+        className="w-[25px] h-[25px] flex items-center justify-center rounded-md bg-white/90 border border-red-300 text-red-600 shadow-sm transition hover:bg-red-50 active:bg-red-100 active:scale-95 disabled:opacity-50"
+      >
+        <X size={14} strokeWidth={2.5} />
+      </button>
+    );
+  }
 
   return (
     <button

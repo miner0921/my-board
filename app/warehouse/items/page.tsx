@@ -9,7 +9,11 @@ import FilterCheckbox from "./FilterCheckbox";
 import NewItemButton from "./NewItemButton";
 import BulkUploadButton from "./BulkUploadButton";
 import ItemList, { type Item } from "./ItemList";
+import Pagination from "./Pagination";
 import { BulkSelectProvider, BulkActionButton } from "../_components/BulkSelect";
+
+// 한 페이지 품목 수 (번호 페이지네이션)
+const PAGE_SIZE = 10;
 
 // 정렬 옵션 화이트리스트. key는 SortSelect의 <option value>와 일치.
 // orderBy는 고정 문자열만 사용 (사용자 입력을 SQL에 직접 넣지 않음).
@@ -30,6 +34,7 @@ type PageProps = {
     sort?: string;
     cat?: string;
     deleted?: string;
+    page?: string;
   }>;
 };
 
@@ -44,6 +49,7 @@ export default async function ItemListPage({ searchParams }: PageProps) {
     sort: sortParam,
     cat: catParam,
     deleted: delParam,
+    page: pageParam,
   } = await searchParams;
   const q = (qParam ?? "").trim();
   const noBarcode = nbParam === "1";
@@ -82,6 +88,24 @@ export default async function ItemListPage({ searchParams }: PageProps) {
   }
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
+  // 전체 건수 (같은 WHERE·params) → 페이지 수 계산
+  const countResult = await query(
+    `SELECT COUNT(*)::int AS total FROM items i ${where}`,
+    params
+  );
+  const total: number = countResult.rows[0]?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // page 파라미터 클램프(범위 밖이면 보정)
+  const reqPage = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
+  const page = Math.min(reqPage, totalPages);
+  const offset = (page - 1) * PAGE_SIZE;
+
+  // 해당 페이지 10건만 조회 (LIMIT/OFFSET)
+  params.push(PAGE_SIZE);
+  const limitIdx = params.length;
+  params.push(offset);
+  const offsetIdx = params.length;
+
   const result = await query(
     `SELECT
        i.id, i.product_code, i.category, i.kind, i.barcode, i.name,
@@ -92,11 +116,21 @@ export default async function ItemListPage({ searchParams }: PageProps) {
      FROM items i
      LEFT JOIN users u ON i.created_by = u.id
      ${where}
-     ORDER BY ${orderBy}`,
+     ORDER BY ${orderBy}
+     LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
     params
   );
 
   const items: Item[] = result.rows;
+
+  // 페이지 이동 시 유지할 현재 조건(page 제외)
+  const baseParams: Record<string, string> = {};
+  if (q !== "") baseParams.q = q;
+  if (noBarcode) baseParams.nobarcode = "1";
+  if (noImage) baseParams.noimage = "1";
+  if (sort !== DEFAULT_SORT) baseParams.sort = sort;
+  if (cat !== "") baseParams.cat = cat;
+  if (viewDeleted) baseParams.deleted = "1";
 
   // 카테고리(구분) 드롭다운 옵션 (전체 품목 기준 distinct — 다른 필터와 무관하게 안정)
   const catResult = await query(
@@ -196,6 +230,15 @@ export default async function ItemListPage({ searchParams }: PageProps) {
         viewDeleted={viewDeleted}
         isFiltered={isFiltered}
       />
+
+      {items.length > 0 && (
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          total={total}
+          baseParams={baseParams}
+        />
+      )}
     </div>
     </BulkSelectProvider>
   );

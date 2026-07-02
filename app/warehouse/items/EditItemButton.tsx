@@ -2,30 +2,46 @@
 
 import { useState, startTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Pencil } from "lucide-react";
 import Modal from "../_components/Modal";
 import ItemForm from "./ItemForm";
 
 // 품목 카드의 "수정" — 페이지 이동 없이 모달로.
 // 모달이 열릴 때 ItemForm(edit)이 마운트되며 GET 으로 최신값을 불러온다.
+//   variant="row"(기본): 텍스트 버튼 / variant="icon": 이미지 위 오버레이 아이콘.
 export default function EditItemButton({
   itemId,
   isAdmin = false,
+  variant = "row",
 }: {
   itemId: number;
   isAdmin?: boolean;
+  variant?: "row" | "icon";
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex-1 text-center px-2 py-1 text-[11px] border border-zinc-300 rounded hover:bg-zinc-50 transition"
-      >
-        수정
-      </button>
+      {variant === "icon" ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="수정"
+          title="수정"
+          className="w-[25px] h-[25px] flex items-center justify-center rounded-md bg-white/90 border border-zinc-300 text-zinc-700 shadow-sm transition hover:bg-zinc-100 active:bg-zinc-200 active:scale-95"
+        >
+          <Pencil size={14} strokeWidth={2} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex-1 text-center px-2 py-1 text-[11px] border border-zinc-300 rounded hover:bg-zinc-50 transition"
+        >
+          수정
+        </button>
+      )}
 
       <Modal open={open} onClose={() => setOpen(false)} title="품목 수정" size="lg">
         <ItemForm

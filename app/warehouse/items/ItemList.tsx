@@ -98,10 +98,21 @@ export default function ItemList({
                 key={item.id}
                 className="relative border border-zinc-200 rounded-lg overflow-hidden bg-white flex flex-col"
               >
-                {/* 선택 체크박스 (관리자만) */}
+                {/* 선택 체크박스 (관리자만) — 이미지 좌상단 오버레이.
+                    ★ z-index 없음: absolute 만으로 이미지 위에 뜨고, stacking context를
+                      만들지 않아 카드 안의 수정 모달(fixed z-50)이 카드 밖으로 정상 노출됨. */}
                 {isAdmin && (
-                  <div className="absolute top-1 left-1 z-10 bg-white/90 rounded p-0.5">
+                  <div className="absolute top-1 left-1 bg-white/90 rounded p-0.5">
                     <BulkCheckbox id={item.id} />
+                  </div>
+                )}
+
+                {/* 수정/삭제 오버레이 아이콘 — 이미지 우상단(활성 보기만, 항상 표시).
+                    ★ z-index 없음(모달 갇힘 방지) — 위 체크박스와 동일 이유. */}
+                {!viewDeleted && (
+                  <div className="absolute top-1 right-1 flex gap-1">
+                    <EditItemButton itemId={item.id} isAdmin={isAdmin} variant="icon" />
+                    {isAdmin && <DeleteButton itemId={item.id} variant="icon" />}
                   </div>
                 )}
 
@@ -124,31 +135,27 @@ export default function ItemList({
                   <h2 className="font-medium text-[11px] sm:text-xs text-zinc-900 line-clamp-2 leading-snug">
                     {item.name}
                   </h2>
-                  {item.product_code && (
+                  {/* 품목코드 · 바코드 한 줄 (있는 것만) */}
+                  {(item.product_code || item.barcode) && (
                     <p className="mt-0.5 font-mono text-[10px] text-zinc-400 truncate">
-                      {item.product_code}
+                      {[item.product_code, item.barcode].filter(Boolean).join(" · ")}
                     </p>
                   )}
-                  <div className="mt-1 flex items-center gap-1 flex-wrap">
-                    <BarcodeTag barcode={item.barcode} />
-                    {viewDeleted && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] border bg-red-50 text-red-600 border-red-200">
-                        숨김
-                      </span>
-                    )}
-                  </div>
+                  {/* 배지: 바코드 미등록 / 숨김 — 품목명 아래 현행 유지 */}
+                  {(!item.barcode || viewDeleted) && (
+                    <div className="mt-1 flex items-center gap-1 flex-wrap">
+                      {!item.barcode && <BarcodeTag barcode={null} />}
+                      {viewDeleted && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] border bg-red-50 text-red-600 border-red-200">
+                          숨김
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <p className="text-[11px] text-zinc-400 mt-1 line-clamp-1">
                     {item.author_nickname ?? "(삭제된 사용자)"} ·{" "}
                     {formatDate(item.created_at)}
                   </p>
-
-                  {/* 활성 보기에서만 수정/삭제 버튼 (숨김 보기는 복구 바로 처리) */}
-                  {!viewDeleted && (
-                    <div className="flex gap-1 mt-2">
-                      <EditItemButton itemId={item.id} isAdmin={isAdmin} />
-                      {isAdmin && <DeleteButton itemId={item.id} />}
-                    </div>
-                  )}
                 </div>
               </div>
             );
