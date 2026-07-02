@@ -131,11 +131,6 @@ export default function ItemList({
                   )}
                   <div className="mt-1 flex items-center gap-1 flex-wrap">
                     <BarcodeTag barcode={item.barcode} />
-                    {item.scan_exempt && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] border bg-zinc-100 text-zinc-500 border-zinc-200">
-                        스캔 불필요
-                      </span>
-                    )}
                     {viewDeleted && (
                       <span className="px-1.5 py-0.5 rounded text-[10px] border bg-red-50 text-red-600 border-red-200">
                         숨김
