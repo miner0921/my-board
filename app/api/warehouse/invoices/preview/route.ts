@@ -111,8 +111,9 @@ export async function POST(request: Request) {
     const allNormalized = new Set<string>();
 
     const matchedDetail = matched.map((m) => {
+      // 상품명은 발주서 우선(송장은 길이제한으로 잘릴 수 있음) — commit-upload와 일치.
       const productRaw =
-        m.invoice.productNameRaw || m.order?.productNameRaw || "";
+        m.order?.productNameRaw || m.invoice.productNameRaw || "";
       const parsed = parseProductName(productRaw);
       const items = parsed.items.map((it) => {
         allNormalized.add(it.normalizedName);

@@ -87,7 +87,7 @@ export async function POST(request: Request) {
         !force
       ) {
         const cur = await query(
-          `SELECT i.id, i.invoice_no,
+          `SELECT i.id, i.invoice_no, i.status,
                   COALESCE(SUM(ii.quantity), 0)::int       AS total_qty,
                   COALESCE(SUM(ii.scanned_count), 0)::int  AS scanned_qty
              FROM invoices i
@@ -97,7 +97,13 @@ export async function POST(request: Request) {
             GROUP BY i.id`,
           [currentInvoiceId]
         );
-        if (cur.rows.length > 0 && cur.rows[0].scanned_qty > 0) {
+        // 완료/부분완료 송장은 "진행 중"이 아니므로 확인창 대상에서 제외.
+        // 진짜 미완료(pending) 송장을 두고 넘어갈 때만 경고한다.
+        const curRow = cur.rows[0];
+        const curDone =
+          curRow?.status === "completed" ||
+          curRow?.status === "completed_partial";
+        if (curRow && !curDone && curRow.scanned_qty > 0) {
           return NextResponse.json(
             {
               type: "invoice_change_pending",
@@ -107,10 +113,10 @@ export async function POST(request: Request) {
                 invoice_no: nextInv.invoice_no,
               },
               current_invoice: {
-                id: cur.rows[0].id,
-                invoice_no: cur.rows[0].invoice_no,
-                scanned_qty: cur.rows[0].scanned_qty,
-                total_qty: cur.rows[0].total_qty,
+                id: curRow.id,
+                invoice_no: curRow.invoice_no,
+                scanned_qty: curRow.scanned_qty,
+                total_qty: curRow.total_qty,
               },
             },
             { status: 409 }

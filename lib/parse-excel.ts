@@ -146,9 +146,10 @@ export function parseItemsSheet(buffer: Buffer): ItemUploadRow[] {
   });
 }
 
-// 한 주문번호가 여러 송장으로 분할되는 경우("/1","/2") 매칭 키
+// 주문번호는 통째로 하나의 고유값 — 문자열 전체로 완벽 일치해야 매칭.
+// ("202607027435357/1"과 "202607027435357"은 별개. / 기준 분리·접미사 제거 없음.)
 export function orderMatchKey(orderNo: string): string {
-  return orderNo.replace(/\/\d+$/, "").trim();
+  return orderNo.trim();
 }
 
 // 발주서의 deliveryNote + 자동 파싱된 notes를 사람이 읽기 쉬운 형식으로 합침
