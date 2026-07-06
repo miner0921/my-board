@@ -85,7 +85,7 @@ export async function POST(request: Request) {
       // 대상 행 + 전체 행 잠금 (제외 상태 포함해서 가져옴)
       const rowsRes = await client.query(
         `SELECT ii.id AS invoice_item_id, ii.item_id, ii.quantity, ii.scanned_count,
-                ii.excluded_at, it.name AS item_name
+                ii.excluded_at, it.name AS item_name, it.inspection_exempt
            FROM invoice_items ii
            JOIN items it ON it.id = ii.item_id
           WHERE ii.invoice_id = $1
@@ -99,6 +99,7 @@ export async function POST(request: Request) {
         scanned_count: number;
         excluded_at: string | null;
         item_name: string;
+        inspection_exempt: boolean;
       }> = rowsRes.rows;
       const target = rows.find((r) => r.invoice_item_id === invoiceItemId);
       if (!target) return { kind: "item_missing" as const };
@@ -141,8 +142,10 @@ export async function POST(request: Request) {
         target.excluded_at = null; // 재계산에서 다시 포함
       }
 
-      // ── 진행률/완료 재판정 — 제외되지 않은 품목만 기준 ──
-      const activeRows = rows.filter((r) => r.excluded_at === null);
+      // ── 진행률/완료 재판정 — 제외(취소)·스캔불필요 품목을 모두 뺀 활성 품목만 기준 ──
+      const activeRows = rows.filter(
+        (r) => r.excluded_at === null && !r.inspection_exempt
+      );
       const totalQty = activeRows.reduce((s, r) => s + r.quantity, 0);
       const scannedQty = activeRows.reduce(
         (s, r) => s + Math.min(r.scanned_count, r.quantity),

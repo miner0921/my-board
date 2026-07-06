@@ -74,7 +74,7 @@ export async function POST(request: Request) {
       // 제외된 품목은 완료 판정/대상에서 빠진다.
       const rowsRes = await client.query(
         `SELECT ii.id AS invoice_item_id, ii.item_id, ii.quantity, ii.scanned_count,
-                it.name AS item_name
+                it.name AS item_name, it.inspection_exempt
            FROM invoice_items ii
            JOIN items it ON it.id = ii.item_id
           WHERE ii.invoice_id = $1 AND ii.excluded_at IS NULL
@@ -87,6 +87,7 @@ export async function POST(request: Request) {
         quantity: number;
         scanned_count: number;
         item_name: string;
+        inspection_exempt: boolean;
       }> = rowsRes.rows;
       const target = rows.find((r) => r.invoice_item_id === invoiceItemId);
       if (!target) return { kind: "item_missing" as const };
@@ -145,18 +146,19 @@ export async function POST(request: Request) {
         [invoiceId, target.item_id, userId, changeReason, changeQty]
       );
 
-      // 완료 재판정 — 모든 품목 기준
+      // 완료 재판정 — 동봉 포함 모든 품목 기준, 단 스캔불필요(inspection_exempt)는 제외.
       const updatedRows = rows.map((r) =>
         r.invoice_item_id === invoiceItemId ? { ...r, scanned_count: count } : r
       );
-      const totalQty = updatedRows.reduce((s, r) => s + r.quantity, 0);
-      const scannedQty = updatedRows.reduce(
+      const countedRows = updatedRows.filter((r) => !r.inspection_exempt);
+      const totalQty = countedRows.reduce((s, r) => s + r.quantity, 0);
+      const scannedQty = countedRows.reduce(
         (s, r) => s + Math.min(r.scanned_count, r.quantity),
         0
       );
       const allFilled =
-        updatedRows.length > 0 &&
-        updatedRows.every((r) => r.scanned_count >= r.quantity);
+        countedRows.length > 0 &&
+        countedRows.every((r) => r.scanned_count >= r.quantity);
 
       let completedAt: string | null = null;
       if (allFilled) {

@@ -29,6 +29,7 @@ export type Item = {
   updated_at: string;
   is_auto_created: boolean;
   scan_exempt: boolean;
+  inspection_exempt?: boolean; // 스캔불필요(검수 제외) 배지용
   author_nickname: string | null;
 };
 
@@ -150,10 +151,15 @@ export default function ItemList({
                       ) : null}
                     </p>
                   )}
-                  {/* 배지: 바코드 미등록 / 숨김 — 품목명 아래 현행 유지 */}
-                  {(!item.barcode || viewDeleted) && (
+                  {/* 배지: 바코드 미등록 / 스캔불필요 / 숨김 — 품목명 아래 현행 유지 */}
+                  {(!item.barcode || item.inspection_exempt || viewDeleted) && (
                     <div className="mt-1 flex items-center gap-1 flex-wrap">
                       {!item.barcode && <BarcodeTag barcode={null} />}
+                      {item.inspection_exempt && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] border bg-violet-50 text-violet-600 border-violet-200">
+                          스캔불필요
+                        </span>
+                      )}
                       {viewDeleted && (
                         <span className="px-1.5 py-0.5 rounded text-[10px] border bg-red-50 text-red-600 border-red-200">
                           숨김

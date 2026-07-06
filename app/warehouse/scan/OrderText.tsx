@@ -20,6 +20,7 @@ type OrderTextItem = {
   quantity: number;
   scanned_count: number;
   scan_exempt?: boolean;
+  inspection_exempt?: boolean;
   is_added_on_scan?: boolean;
   excluded?: boolean;
 };
@@ -135,6 +136,12 @@ export default function OrderText({
                   <span className="text-zinc-400 no-underline text-[11px]">
                     {" "}
                     (동봉)
+                  </span>
+                )}
+                {item?.inspection_exempt && (
+                  <span className="text-violet-500 no-underline text-[11px]">
+                    {" "}
+                    (스캔불필요)
                   </span>
                 )}
                 {excluded && (

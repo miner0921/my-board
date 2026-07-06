@@ -57,7 +57,7 @@ export async function POST(request: Request) {
 
       // 추가할 품목 존재 확인 + 카드 표시용 정보
       const itemSel = await client.query(
-        `SELECT id, name, barcode, scan_exempt, updated_at,
+        `SELECT id, name, barcode, scan_exempt, inspection_exempt, updated_at,
                 (image_data IS NOT NULL) AS has_image,
                 (barcode IS NOT NULL
                   OR EXISTS (SELECT 1 FROM item_barcodes b WHERE b.item_id = items.id)
@@ -147,12 +147,16 @@ export async function POST(request: Request) {
         );
       }
 
-      // 진행률 재계산 (제외 품목 제외)
+      // 진행률 재계산 (제외 품목 + 스캔불필요 품목 제외)
       const agg = await client.query(
         `SELECT COALESCE(SUM(quantity), 0)::int AS total_qty,
                 COALESCE(SUM(LEAST(scanned_count, quantity)), 0)::int AS scanned_qty
            FROM invoice_items
-          WHERE invoice_id = $1 AND excluded_at IS NULL`,
+          WHERE invoice_id = $1 AND excluded_at IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM items ix
+               WHERE ix.id = invoice_items.item_id AND ix.inspection_exempt
+            )`,
         [invoiceId]
       );
 
@@ -171,6 +175,7 @@ export async function POST(request: Request) {
           updated_at: item.updated_at,
           has_image: item.has_image as boolean,
           scan_exempt: item.scan_exempt as boolean,
+          inspection_exempt: item.inspection_exempt as boolean,
           is_added_on_scan: true,
         },
         invoice: {

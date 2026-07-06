@@ -60,6 +60,8 @@ type ItemPayload = {
   updated_at: string;
   is_added_on_scan?: boolean;
   scan_exempt?: boolean;
+  // 스캔불필요(검수 제외) — 카드/진행률/완료에서 빠지되 화면엔 흐리게 표시(사라지지 않음).
+  inspection_exempt?: boolean;
   // 취소(excluded)된 품목 — items 에 남겨두되 카드/진행률에선 제외, OrderText 에선 "(취소)".
   excluded?: boolean;
 }
@@ -402,7 +404,12 @@ export default function ScanPage() {
         message: string;
       }
     | { type: "scan_unknown"; message: string }
-    | { type: "scan_no_invoice"; message: string };
+    | { type: "scan_no_invoice"; message: string }
+    | {
+        type: "scan_inspection_exempt";
+        item: { name: string };
+        message: string;
+      };
 
   // 자동 재개 처리: 응답에 auto_reopened=true 가 오면 송장 상태를 pending으로
   // 되돌리고 완료 배너를 해제한다. 모든 정상 카운트 응답에서 공통 호출.
@@ -578,6 +585,13 @@ export default function ScanPage() {
         vibrate([100, 50, 100]);
         return;
       }
+      case "scan_inspection_exempt": {
+        // 스캔불필요 품목 — 오류 아님. 카운트 없이 안내만(빨간 오류 연출 배제).
+        setStatusKind("info");
+        setStatusMsg(`${data.item.name}: ${data.message}`);
+        vibrate([60]);
+        return;
+      }
     }
   };
 
@@ -716,7 +730,14 @@ export default function ScanPage() {
   // items 엔 취소(excluded) 품목도 들어있다(OrderText "(취소)" 표시용) → 카드/진행률에선 제외.
   const isItemComplete = (it: ItemPayload) =>
     it.scanned_count >= it.quantity && it.quantity > 0;
-  const activeItems = items.filter((it) => !it.excluded);
+  // 스캔불필요(검수 제외) 품목은 남은/완료 카드·진행 계산에서 빠지고, 별도 영역에
+  //   흐리게만 표시한다(송장에 있다는 사실은 작업자가 알 수 있게).
+  const activeItems = items.filter(
+    (it) => !it.excluded && !it.inspection_exempt
+  );
+  const exemptItems = items.filter(
+    (it) => !it.excluded && it.inspection_exempt
+  );
   const remainingItems = activeItems.filter((it) => !isItemComplete(it));
   const completedItems = activeItems.filter(isItemComplete);
 
@@ -818,6 +839,7 @@ export default function ScanPage() {
       updated_at: it.updated_at,
       is_added_on_scan: it.is_added_on_scan,
       scan_exempt: it.scan_exempt,
+      inspection_exempt: it.inspection_exempt,
     };
     upsertItem(card);
     setInvoice((prev) =>
@@ -843,7 +865,12 @@ export default function ScanPage() {
 
     // 바코드가 하나도 없는 품목을 새로 넣었으면 수량 입력(수동 챙김)으로 바로 연결.
     //   대표는 없어도 추가 바코드가 있으면 스캔 가능 → 자동으로 수동 모달 열지 않음.
-    if (!hasAnyBarcode(card) && result.outcome !== "already_present") {
+    //   스캔불필요 품목은 검수 대상이 아니므로 수동 모달을 열지 않는다.
+    if (
+      !card.inspection_exempt &&
+      !hasAnyBarcode(card) &&
+      result.outcome !== "already_present"
+    ) {
       setManualTarget(card);
     }
   };
@@ -1175,7 +1202,7 @@ export default function ScanPage() {
                     scanExempt: it.scan_exempt === true,
                   }}
                   highlighted={lastScannedId === it.invoice_item_id}
-                  onPick={!hasAnyBarcode(it) ? () => setManualTarget(it) : undefined}
+                  onPick={() => setManualTarget(it)}
                   onExclude={() => setExcludeTarget(it)}
                 />
               ))}
@@ -1206,6 +1233,38 @@ export default function ScanPage() {
                 }}
                 highlighted={lastScannedId === it.invoice_item_id}
                 onMenu={() => setMenuTarget(it)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* 스캔불필요(검수 제외) 상품 — 검수 대상 아님. 클릭/스캔 비활성, 흐리게 표시만.
+          송장에 있다는 사실은 작업자가 알 수 있게 목록 하단에 남긴다. */}
+      {invoice && exemptItems.length > 0 && (
+        <>
+          <p className="text-[11px] text-zinc-500 mt-5 mb-1.5">
+            스캔불필요 상품{" "}
+            <span className="text-zinc-400">(검수 대상 아님 · 표기용)</span>
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 opacity-60">
+            {exemptItems.map((it) => (
+              <ScanItemCard
+                key={it.invoice_item_id}
+                item={{
+                  itemId: it.item_id,
+                  name: it.name,
+                  quantity: it.quantity,
+                  scannedCount: it.scanned_count,
+                  barcode: it.barcode,
+                  hasBarcode: hasAnyBarcode(it),
+                  hasImage: it.has_image,
+                  updatedAt: it.updated_at,
+                  isAddedOnScan: it.is_added_on_scan === true,
+                  scanExempt: it.scan_exempt === true,
+                  inspectionExempt: true,
+                }}
+                highlighted={false}
               />
             ))}
           </div>

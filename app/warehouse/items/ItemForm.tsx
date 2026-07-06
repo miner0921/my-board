@@ -38,6 +38,7 @@ export default function ItemForm(props: Props) {
   const [kind, setKind] = useState(""); // 종류
   const [barcode, setBarcode] = useState("");
   const [scanExempt, setScanExempt] = useState(false);
+  const [inspectionExempt, setInspectionExempt] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(isEdit);
@@ -91,6 +92,7 @@ export default function ItemForm(props: Props) {
         }
         setBarcode(data.item.barcode ?? "");
         setScanExempt(!!data.item.scan_exempt);
+        setInspectionExempt(!!data.item.inspection_exempt);
         setAliases(data.aliases ?? []);
         setBarcodes(data.barcodes ?? []);
         setHasExistingImage(!!data.item.has_image);
@@ -260,6 +262,7 @@ export default function ItemForm(props: Props) {
       formData.append("barcode", barcode); // 빈 문자열 OK (서버에서 NULL 변환)
       // name(품명)은 서버에서 buildItemName(구분, 종류) = 정규화 품명으로 조합 — 여기서 보내지 않음
       formData.append("scan_exempt", scanExempt ? "1" : "");
+      formData.append("inspection_exempt", inspectionExempt ? "1" : "");
       if (newImageFile) {
         formData.append("image", newImageFile);
       } else if (isEdit && removeExisting) {
@@ -300,10 +303,10 @@ export default function ItemForm(props: Props) {
         </p>
       )}
 
-      {/* 품목코드 (선택) */}
+      {/* 품목코드 */}
       <div>
         <label className="block text-sm font-medium text-zinc-700 mb-1">
-          품목코드 <span className="text-zinc-400 text-xs">(선택)</span>
+          품목코드
         </label>
         <input
           type="text"
@@ -314,14 +317,13 @@ export default function ItemForm(props: Props) {
           placeholder="예: TPBEV0004"
           maxLength={100}
         />
-        <p className="text-xs text-zinc-400 mt-1">{productCode.length} / 100자</p>
       </div>
 
-      {/* 구분 + 종류 → 품명 "(구분)종류" 로 조합 저장 */}
-      <div className="grid grid-cols-1 sm:grid-cols-[8rem_1fr] gap-3">
+      {/* 구분 + 종류 → 품명 "(구분)종류" 로 조합 저장. 구분:종류 = 5:11 (구분 5/16). */}
+      <div className="grid grid-cols-1 sm:grid-cols-[5fr_11fr] gap-3">
         <div>
           <label className="block text-sm font-medium text-zinc-700 mb-1">
-            구분 <span className="text-zinc-400 text-xs">(선택)</span>
+            구분
           </label>
           <input
             type="text"
@@ -335,7 +337,7 @@ export default function ItemForm(props: Props) {
         </div>
         <div>
           <label className="block text-sm font-medium text-zinc-700 mb-1">
-            종류
+            종류 <span className="text-red-500">*</span>
           </label>
           <input
             type="text"
@@ -361,113 +363,13 @@ export default function ItemForm(props: Props) {
         </span>
       </p>
 
-      {/* 바코드 (선택) */}
-      <div>
-        <label className="block text-sm font-medium text-zinc-700 mb-1">
-          바코드 <span className="text-zinc-400 text-xs">(선택)</span>
-        </label>
-        <input
-          type="text"
-          value={barcode}
-          onChange={(e) => setBarcode(e.target.value)}
-          className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 font-mono"
-          placeholder="바코드 미등록 (선택)"
-          maxLength={100}
-        />
-        <p className="text-xs text-zinc-400 mt-1">{barcode.length} / 100자</p>
-      </div>
-
-      {/* 추가 바코드(다중 바코드) — 수정 모드 · 모든 로그인 사용자(작업자 포함) */}
-      {isEdit && (
-        <div className="border-t border-zinc-100 pt-4">
-          <label className="block text-sm font-medium text-zinc-700 mb-1">
-            추가 바코드{" "}
-            <span className="text-zinc-400 text-xs">(대표 외 · 스캔 인식용)</span>
-          </label>
-          <p className="text-xs text-zinc-400 mb-2">
-            같은 품목에 여러 바코드가 붙는 경우 등록하세요. 스캔 시 대표·추가 어느
-            바코드든 이 품목으로 인식됩니다. 대표 바코드와 같은 값은 등록할 수 없습니다.
-          </p>
-
-          {barcodes.length > 0 && (
-            <ul className="flex flex-wrap gap-1.5 mb-2">
-              {barcodes.map((b) => (
-                <li
-                  key={b.id}
-                  className="inline-flex items-center gap-1 pl-2 pr-1 py-1 bg-zinc-100 rounded text-xs font-mono text-zinc-700"
-                >
-                  <span>{b.barcode}</span>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteBarcode(b.id)}
-                    className="text-zinc-400 hover:text-red-600 leading-none px-1"
-                    aria-label="바코드 삭제"
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={newBarcode}
-              onChange={(e) => setNewBarcode(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleAddBarcode();
-                }
-              }}
-              placeholder="추가 바코드 입력"
-              maxLength={100}
-              className="flex-1 px-3 py-2 border border-zinc-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900"
-            />
-            <button
-              type="button"
-              onClick={handleAddBarcode}
-              disabled={barcodeBusy || !newBarcode.trim()}
-              className="px-4 py-2 border border-zinc-300 rounded-lg text-sm hover:bg-zinc-50 transition disabled:opacity-40"
-            >
-              {barcodeBusy ? "추가 중..." : "추가"}
-            </button>
-          </div>
-          {barcodeError && (
-            <p className="text-xs text-red-600 mt-1">{barcodeError}</p>
-          )}
-        </div>
-      )}
-
-      {/* 스캔 불필요 */}
-      <label className="flex items-start gap-2 cursor-pointer select-none">
-        <input
-          type="checkbox"
-          checked={scanExempt}
-          onChange={(e) => setScanExempt(e.target.checked)}
-          disabled={workerEdit}
-          className="mt-0.5 accent-zinc-900 disabled:cursor-not-allowed"
-        />
-        <span className="text-sm text-zinc-700">
-          동봉(안내물)
-          <span className="block text-xs text-zinc-400">
-            동봉 인쇄물 표시용 배지. 검수 시 수동 챙김으로 확인합니다(제외 아님).
-          </span>
-        </span>
-      </label>
-
-      {/* 별칭(같은 취급 품명) — 수정 + 관리자만 */}
+      {/* 같은 취급 품명(별칭) — 구분·종류 바로 아래. 수정 + 관리자만 */}
       {isEdit && isAdmin && (
         <div className="border-t border-zinc-100 pt-4">
           <label className="block text-sm font-medium text-zinc-700 mb-1">
             같은 취급 품명{" "}
             <span className="text-zinc-400 text-xs">(별칭 · 송장 매칭용)</span>
           </label>
-          <p className="text-xs text-zinc-400 mb-2">
-            송장에 이 품목의 변형 품명이 와도 같은 품목으로 인식합니다. 정규화하면
-            품목 품명과 같아지는 변형, 다른 품목이 쓰는 품명은 등록할 수 없습니다.
-          </p>
 
           {aliases.length > 0 && (
             <ul className="flex flex-wrap gap-1.5 mb-2">
@@ -530,12 +432,126 @@ export default function ItemForm(props: Props) {
         </div>
       )}
 
-      {/* 이미지 (선택) */}
+      {/* 바코드(대표) + 추가 바코드 — 수정 모드는 한 줄에 나란히(좁으면 세로로).
+          등록 모드는 대표 바코드만. */}
+      <div>
+        {/* sm:items-end — 라벨 높이만큼 위로 밀린 입력칸 하단에 [추가] 버튼을 맞춤. */}
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+          {/* 대표 바코드 입력칸 */}
+          <div className="sm:flex-1 min-w-0">
+            <label className="block text-sm font-medium text-zinc-700 mb-1">
+              바코드
+            </label>
+            <input
+              type="text"
+              value={barcode}
+              onChange={(e) => setBarcode(e.target.value)}
+              className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 font-mono"
+              placeholder="바코드 미등록"
+              maxLength={100}
+            />
+          </div>
+
+          {/* 추가 바코드 입력칸(대표와 1:1) + [추가] 버튼(1:1 계산 제외, 우측 별도) — 수정 모드만 */}
+          {isEdit && (
+            <>
+              <div className="sm:flex-1 min-w-0">
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
+                  추가 바코드
+                </label>
+                <input
+                  type="text"
+                  value={newBarcode}
+                  onChange={(e) => setNewBarcode(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddBarcode();
+                    }
+                  }}
+                  placeholder="추가 바코드 입력"
+                  maxLength={100}
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleAddBarcode}
+                disabled={barcodeBusy || !newBarcode.trim()}
+                className="shrink-0 w-full sm:w-auto px-4 py-2 border border-zinc-300 rounded-lg text-sm hover:bg-zinc-50 transition disabled:opacity-40"
+              >
+                {barcodeBusy ? "추가 중..." : "추가"}
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* 등록된 추가 바코드 칩 목록 + 에러 — 그 줄 아래 나열 */}
+        {isEdit && barcodes.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5 mt-2">
+            {barcodes.map((b) => (
+              <li
+                key={b.id}
+                className="inline-flex items-center gap-1 pl-2 pr-1 py-1 bg-zinc-100 rounded text-xs font-mono text-zinc-700"
+              >
+                <span>{b.barcode}</span>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteBarcode(b.id)}
+                  className="text-zinc-400 hover:text-red-600 leading-none px-1"
+                  aria-label="바코드 삭제"
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {isEdit && barcodeError && (
+          <p className="text-xs text-red-600 mt-1">{barcodeError}</p>
+        )}
+      </div>
+
+      {/* 동봉(안내물) — 검수는 필요 */}
+      <label className="flex items-start gap-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={scanExempt}
+          onChange={(e) => setScanExempt(e.target.checked)}
+          disabled={workerEdit}
+          className="mt-0.5 accent-zinc-900 disabled:cursor-not-allowed"
+        />
+        <span className="text-sm text-zinc-700">
+          동봉{" "}
+          <span className="text-xs text-zinc-400 font-normal">
+            — 표시용 배지. 검수 포함.
+          </span>
+        </span>
+      </label>
+
+      {/* 스캔불필요(검수 제외) — 동봉과 별개. 진행률/완료에서 아예 빠짐 */}
+      <label className="flex items-start gap-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={inspectionExempt}
+          onChange={(e) => setInspectionExempt(e.target.checked)}
+          disabled={workerEdit}
+          className="mt-0.5 accent-violet-700 disabled:cursor-not-allowed"
+        />
+        <span className="text-sm text-zinc-700">
+          스캔불필요{" "}
+          <span className="text-xs text-zinc-400 font-normal">
+            — 송장 표기용. 검수·진행률에서 제외.
+          </span>
+        </span>
+      </label>
+
+      {/* 대표 이미지 */}
       <div>
         <label className="block text-sm font-medium text-zinc-700 mb-1">
           대표 이미지{" "}
           <span className="text-zinc-400 text-xs">
-            (선택, JPG/PNG/GIF/WEBP · 5MB 이하)
+            (JPG/PNG/GIF/WEBP · 5MB 이하)
           </span>
         </label>
         <input
@@ -597,6 +613,13 @@ export default function ItemForm(props: Props) {
           </div>
         )}
       </div>
+
+      {/* 등록 모드 안내 — 추가 바코드·같은 취급 품명은 등록 후 수정에서 */}
+      {!isEdit && (
+        <p className="text-xs text-zinc-400">
+          추가 바코드·같은 취급 품명은 등록 후 수정에서 넣을 수 있습니다.
+        </p>
+      )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 

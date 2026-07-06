@@ -111,7 +111,7 @@ export default async function ItemListPage({ searchParams }: PageProps) {
     `SELECT
        i.id, i.product_code, i.category, i.kind, i.barcode, i.name,
        i.created_by, i.created_at, i.updated_at,
-       i.is_auto_created, i.scan_exempt,
+       i.is_auto_created, i.scan_exempt, i.inspection_exempt,
        (i.image_data IS NOT NULL) AS has_image,
        (SELECT COUNT(*)::int FROM item_barcodes b WHERE b.item_id = i.id) AS extra_barcode_count,
        u.nickname AS author_nickname

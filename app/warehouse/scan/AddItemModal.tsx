@@ -31,6 +31,7 @@ export type AddResult = {
     updated_at: string;
     has_image: boolean;
     scan_exempt: boolean;
+    inspection_exempt: boolean;
     is_added_on_scan: boolean;
   };
   invoice: {

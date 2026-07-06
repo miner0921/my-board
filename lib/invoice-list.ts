@@ -178,6 +178,10 @@ export async function fetchInvoiceList(
      FROM invoices i
      LEFT JOIN invoice_items ii
        ON ii.invoice_id = i.id AND ii.excluded_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM items ix
+             WHERE ix.id = ii.item_id AND ix.inspection_exempt
+          )
      ${where}
      GROUP BY i.id
      ${havingClause}

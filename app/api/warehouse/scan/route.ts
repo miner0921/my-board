@@ -65,6 +65,10 @@ export async function POST(request: Request) {
          FROM invoices i
          LEFT JOIN invoice_items ii
            ON ii.invoice_id = i.id AND ii.excluded_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM items ix
+                 WHERE ix.id = ii.item_id AND ix.inspection_exempt
+              )
         WHERE i.invoice_no = $1 AND i.deleted_at IS NULL
         GROUP BY i.id`,
       [barcode]
@@ -93,6 +97,10 @@ export async function POST(request: Request) {
              FROM invoices i
              LEFT JOIN invoice_items ii
                ON ii.invoice_id = i.id AND ii.excluded_at IS NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM items ix
+                     WHERE ix.id = ii.item_id AND ix.inspection_exempt
+                  )
             WHERE i.id = $1 AND i.deleted_at IS NULL
             GROUP BY i.id`,
           [currentInvoiceId]
@@ -262,6 +270,7 @@ export async function POST(request: Request) {
       const rowsRes = await client.query(
         `SELECT ii.id AS invoice_item_id, ii.item_id, ii.quantity, ii.scanned_count,
                 it.name AS item_name, it.barcode AS item_barcode, it.scan_exempt,
+                it.inspection_exempt,
                 (it.barcode = $2
                   OR EXISTS (
                     SELECT 1 FROM item_barcodes b
@@ -281,6 +290,7 @@ export async function POST(request: Request) {
         item_name: string;
         item_barcode: string | null;
         scan_exempt: boolean;
+        inspection_exempt: boolean;
         matches_scan: boolean;
       }> = rowsRes.rows;
 
@@ -291,6 +301,21 @@ export async function POST(request: Request) {
       const candidates = rows.filter((r) => r.matches_scan);
       const target =
         candidates.find((r) => r.scanned_count < r.quantity) ?? candidates[0];
+
+      // 스캔불필요(inspection_exempt) 품목을 찍은 경우: 카운트하지 않고 안내만.
+      //   판정은 "현재 송장 품목(target)" 기준이라 바코드 공유(19쌍)에도 안전
+      //   — 전역 LIMIT 1로 엉뚱한 exempt 품목을 집는 위험 없음.
+      if (target && target.inspection_exempt) {
+        await client.query(
+          `INSERT INTO scan_logs (invoice_id, item_id, user_id, is_error, error_reason, quantity)
+           VALUES ($1, $2, $3, false, 'inspection_exempt', 0)`,
+          [currentInvoiceId, target.item_id, userId]
+        );
+        return {
+          kind: "inspection_exempt" as const,
+          itemName: target.item_name,
+        };
+      }
 
       // 송장에 없는 품목
       if (!target) {
@@ -322,11 +347,12 @@ export async function POST(request: Request) {
 
           // 카드 그리드 표시용 items 정보
           const itemInfo = await client.query(
-            `SELECT barcode, updated_at,
+            `SELECT barcode, updated_at, inspection_exempt,
                     (image_data IS NOT NULL) AS has_image
                FROM items WHERE id = $1`,
             [matchedItem.id]
           );
+          const forcedExempt = itemInfo.rows[0]?.inspection_exempt === true;
 
           // 첫 스캔 시점 기록 (NULL일 때만)
           await client.query(
@@ -356,18 +382,20 @@ export async function POST(request: Request) {
               item_name: matchedItem.name as string,
               item_barcode: null,
               scan_exempt: false,
+              inspection_exempt: forcedExempt,
               matches_scan: true,
             },
           ];
-          // 완료 판정은 모든 품목 기준 (동봉 포함 — 검수 제외 없음)
-          const totalQty = newRows.reduce((s, r) => s + r.quantity, 0);
-          const scannedQty = newRows.reduce(
+          // 완료 판정은 동봉 포함 모든 품목 기준, 단 스캔불필요(inspection_exempt)는 제외.
+          const countedRows = newRows.filter((r) => !r.inspection_exempt);
+          const totalQty = countedRows.reduce((s, r) => s + r.quantity, 0);
+          const scannedQty = countedRows.reduce(
             (s, r) => s + Math.min(r.scanned_count, r.quantity),
             0
           );
           const allFilled =
-            newRows.length > 0 &&
-            newRows.every((r) => r.scanned_count >= r.quantity);
+            countedRows.length > 0 &&
+            countedRows.every((r) => r.scanned_count >= r.quantity);
 
           let completedAt: string | null = null;
           if (allFilled) {
@@ -487,15 +515,16 @@ export async function POST(request: Request) {
           ? { ...r, scanned_count: nextCount }
           : r
       );
-      // 완료 판정은 모든 품목 기준 (동봉 포함 — 검수 제외 없음)
-      const totalQty = updatedRows.reduce((s, r) => s + r.quantity, 0);
-      const scannedQty = updatedRows.reduce(
+      // 완료 판정은 동봉 포함 모든 품목 기준, 단 스캔불필요(inspection_exempt)는 제외.
+      const countedRows = updatedRows.filter((r) => !r.inspection_exempt);
+      const totalQty = countedRows.reduce((s, r) => s + r.quantity, 0);
+      const scannedQty = countedRows.reduce(
         (s, r) => s + Math.min(r.scanned_count, r.quantity),
         0
       );
       const allFilled =
-        updatedRows.length > 0 &&
-        updatedRows.every((r) => r.scanned_count >= r.quantity);
+        countedRows.length > 0 &&
+        countedRows.every((r) => r.scanned_count >= r.quantity);
 
       let completedAt: string | null = null;
       if (allFilled) {
@@ -551,6 +580,15 @@ export async function POST(request: Request) {
         type: "scan_wrong_item",
         item: { name: result.itemName },
         message: `이 품목은 다른 송장의 품목입니다. 현장에서 추가하거나 [취소] 후 해당 송장을 먼저 스캔하세요.`,
+      });
+    }
+
+    if (result.kind === "inspection_exempt") {
+      // 스캔불필요 품목을 찍음 — 카운트 없이 안내만(진행률 불변).
+      return NextResponse.json({
+        type: "scan_inspection_exempt",
+        item: { name: result.itemName },
+        message: `스캔불필요 품목입니다. 검수 대상이 아니라 카운트하지 않습니다.`,
       });
     }
 
@@ -737,6 +775,10 @@ async function loadInvoiceFull(invoiceId: number): Promise<{
        FROM invoices i
        LEFT JOIN invoice_items ii
          ON ii.invoice_id = i.id AND ii.excluded_at IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM items ix
+               WHERE ix.id = ii.item_id AND ix.inspection_exempt
+            )
        WHERE i.id = $1 AND i.deleted_at IS NULL
        GROUP BY i.id`,
       [invoiceId]
@@ -750,7 +792,7 @@ async function loadInvoiceFull(invoiceId: number): Promise<{
          ii.item_id, ii.quantity, ii.scanned_count, ii.display_name,
          (ii.excluded_at IS NOT NULL) AS excluded,
          ii.is_added_on_scan,
-         it.name, it.barcode, it.updated_at, it.scan_exempt,
+         it.name, it.barcode, it.updated_at, it.scan_exempt, it.inspection_exempt,
          (it.image_data IS NOT NULL) AS has_image,
          (it.barcode IS NOT NULL
            OR EXISTS (SELECT 1 FROM item_barcodes b WHERE b.item_id = it.id)

@@ -20,6 +20,7 @@ export type InvoiceItemCardData = {
   updatedAt: string;
   isAddedOnScan: boolean;
   scanExempt?: boolean;
+  inspectionExempt?: boolean; // 스캔불필요(검수 제외) — 진행률/완료에서 빠짐, 배지 표시
   // 제외됨(검수 중 빼기) — 진행률엔 안 잡히지만 기록 보존용으로 회색 표시
   excluded?: boolean;
   excludeReason?: string | null;
@@ -43,6 +44,8 @@ export default function InvoiceItemCard({
   const excluded = !!item.excluded;
   // scan_exempt = 동봉(배지)일 뿐, 검수에서 빠지지 않음 → 카운트/완료 정상 표시.
   const exempt = !!item.scanExempt;
+  // inspection_exempt = 스캔불필요(검수 제외) — 진행률/완료에서 빠짐. 배지로만 표시.
+  const inspectionExempt = !!item.inspectionExempt;
   const complete = scannedCount >= quantity && quantity > 0;
   const over = scannedCount > quantity && quantity > 0;
   const overCount = scannedCount - quantity;
@@ -120,6 +123,11 @@ export default function InvoiceItemCard({
           {!excluded && exempt && (
             <span className="px-1.5 py-0.5 rounded text-[10px] border bg-zinc-100 text-zinc-500 border-zinc-200">
               동봉
+            </span>
+          )}
+          {!excluded && inspectionExempt && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] border bg-violet-50 text-violet-600 border-violet-200">
+              스캔불필요
             </span>
           )}
           {!excluded && over && (

@@ -18,6 +18,7 @@ type ScanItemCardData = {
   updatedAt: string;
   isAddedOnScan: boolean;
   scanExempt?: boolean; // 동봉 배지용
+  inspectionExempt?: boolean; // 스캔불필요(검수 제외) 배지용
 };
 
 export default function ScanItemCard({
@@ -140,17 +141,28 @@ export default function ScanItemCard({
               동봉
             </span>
           )}
+          {item.inspectionExempt && (
+            <span className="px-1 py-0.5 rounded text-[11px] border bg-violet-50 text-violet-600 border-violet-200">
+              스캔불필요
+            </span>
+          )}
           {item.isAddedOnScan && (
             <span className="px-1 py-0.5 rounded text-[11px] border bg-amber-50 text-amber-700 border-amber-200">
               현장
             </span>
           )}
         </div>
-        {/* 미완료·바코드 없음 → 수동 챙김 안내 */}
+        {/* 미완료·바코드 없음 → 수동 챙김이 기본 동선이므로 강조 안내 */}
         {onPick && manual && (
           <span className="mt-1 inline-flex items-center gap-1 w-fit px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[11px]">
             <Hand size={11} strokeWidth={1.75} />
             탭하여 수량 입력
+          </span>
+        )}
+        {/* 바코드 있는 품목 → 스캔이 기본. 인식 실패 대비 최소 보조 문구만(옅게). */}
+        {onPick && !manual && (
+          <span className="mt-1 inline-flex w-fit text-[10px] text-zinc-400 leading-tight">
+            탭하면 수동 입력
           </span>
         )}
         {/* 완료 카드 → 탭하면 메뉴(수량 수정/취소) */}

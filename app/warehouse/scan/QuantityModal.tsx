@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import Modal from "../_components/Modal";
 
-// 수동 챙김 수량 입력 모달 (바코드 없는 품목 + 동봉).
-// 챙긴 수량(절대값)을 입력 → 확정. 기본값은 필요 수량(quantity).
+// 수동 챙김 수량 입력 모달 (모든 품목 — 바코드 유무 무관).
+// 챙긴 수량(절대값)을 입력 → 확정.
+// 기본값: 이미 챙긴 수량(scanned_count)이 있으면 그 값(실수로 바로 확인해도 값 불변).
+//   아직 0개면 필요 수량(quantity)으로 — 첫 챙김 UX 유지.
 export default function QuantityModal({
   item,
   onConfirm,
@@ -22,7 +24,9 @@ export default function QuantityModal({
   onClose: () => void;
   title?: string;
 }) {
-  const [value, setValue] = useState<string>(String(item.quantity));
+  const [value, setValue] = useState<string>(
+    String(item.scanned_count > 0 ? item.scanned_count : item.quantity)
+  );
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {

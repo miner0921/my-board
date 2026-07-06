@@ -85,6 +85,7 @@ type InvoiceItem = {
   updated_at: string;
   is_added_on_scan: boolean;
   scan_exempt: boolean;
+  inspection_exempt: boolean;
   excluded_at: string | null;
   exclude_reason: string | null;
   excluded_by_name: string | null;
@@ -168,6 +169,10 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
        LEFT JOIN users us          ON i.scan_started_by = us.id
        LEFT JOIN users uo          ON i.completed_by    = uo.id
        LEFT JOIN invoice_items ii  ON ii.invoice_id = i.id AND ii.excluded_at IS NULL
+                                      AND NOT EXISTS (
+                                        SELECT 1 FROM items ix
+                                         WHERE ix.id = ii.item_id AND ix.inspection_exempt
+                                      )
        WHERE i.id = $1 AND i.deleted_at IS NULL
        GROUP BY i.id, uc.nickname, us.nickname, uo.nickname`,
       [id]
@@ -181,7 +186,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
          ii.is_added_on_scan,
          ii.excluded_at, ii.exclude_reason,
          ue.nickname AS excluded_by_name,
-         it.name, it.barcode, it.updated_at, it.scan_exempt,
+         it.name, it.barcode, it.updated_at, it.scan_exempt, it.inspection_exempt,
          (it.image_data IS NOT NULL) AS has_image
        FROM invoice_items ii
        JOIN items it ON it.id = ii.item_id
@@ -520,6 +525,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
                   updatedAt: it.updated_at,
                   isAddedOnScan: it.is_added_on_scan,
                   scanExempt: it.scan_exempt,
+                  inspectionExempt: it.inspection_exempt,
                   excluded: !!it.excluded_at,
                   excludeReason: it.exclude_reason,
                   excludedByName: it.excluded_by_name,

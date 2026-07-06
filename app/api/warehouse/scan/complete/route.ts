@@ -66,12 +66,16 @@ export async function POST(request: Request) {
         return { kind: "already_completed" as const };
       }
 
-      // 진행률 확인 (0이면 거부)
+      // 진행률 확인 (0이면 거부) — 제외 품목 + 스캔불필요 품목은 집계에서 뺀다.
       const sumRes = await client.query(
         `SELECT COALESCE(SUM(scanned_count), 0)::int AS scanned,
                 COALESCE(SUM(quantity), 0)::int      AS total
            FROM invoice_items
-          WHERE invoice_id = $1 AND excluded_at IS NULL`,
+          WHERE invoice_id = $1 AND excluded_at IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM items ix
+               WHERE ix.id = invoice_items.item_id AND ix.inspection_exempt
+            )`,
         [invoiceId]
       );
       const scanned = sumRes.rows[0]?.scanned ?? 0;
