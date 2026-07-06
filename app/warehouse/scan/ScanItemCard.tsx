@@ -12,6 +12,8 @@ type ScanItemCardData = {
   quantity: number;
   scannedCount: number;
   barcode: string | null;
+  // 대표+추가 바코드를 통틀어 하나라도 있으면 true (스캔 가능 = 수동 챙김 아님).
+  hasBarcode: boolean;
   hasImage: boolean;
   updatedAt: string;
   isAddedOnScan: boolean;
@@ -35,7 +37,7 @@ export default function ScanItemCard({
   const complete = scannedCount >= quantity && quantity > 0;
   const over = scannedCount > quantity && quantity > 0;
   const notStarted = scannedCount === 0;
-  const manual = !item.barcode; // 바코드 없음 → 수동 챙김 대상
+  const manual = !item.hasBarcode; // 바코드(대표·추가) 전혀 없음 → 수동 챙김 대상
   // 카드 전체 클릭: 미완료 수동챙김(onPick) 또는 완료 메뉴(onMenu)
   const cardClick = onPick ?? onMenu;
   const clickable = !!cardClick;

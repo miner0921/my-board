@@ -74,7 +74,8 @@ export default async function ItemListPage({ searchParams }: PageProps) {
   if (q !== "") {
     params.push(`%${q}%`);
     conditions.push(
-      `(i.name ILIKE $${params.length} OR i.barcode ILIKE $${params.length} OR i.product_code ILIKE $${params.length})`
+      `(i.name ILIKE $${params.length} OR i.barcode ILIKE $${params.length} OR i.product_code ILIKE $${params.length}
+        OR EXISTS (SELECT 1 FROM item_barcodes b WHERE b.item_id = i.id AND b.barcode ILIKE $${params.length}))`
     );
   }
   if (noBarcode) conditions.push(`i.barcode IS NULL`);
@@ -112,6 +113,7 @@ export default async function ItemListPage({ searchParams }: PageProps) {
        i.created_by, i.created_at, i.updated_at,
        i.is_auto_created, i.scan_exempt,
        (i.image_data IS NOT NULL) AS has_image,
+       (SELECT COUNT(*)::int FROM item_barcodes b WHERE b.item_id = i.id) AS extra_barcode_count,
        u.nickname AS author_nickname
      FROM items i
      LEFT JOIN users u ON i.created_by = u.id

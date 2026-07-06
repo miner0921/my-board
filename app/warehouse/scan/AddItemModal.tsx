@@ -27,6 +27,7 @@ export type AddResult = {
     quantity: number;
     scanned_count: number;
     barcode: string | null;
+    has_barcode: boolean;
     updated_at: string;
     has_image: boolean;
     scan_exempt: boolean;

@@ -20,7 +20,8 @@ export type Item = {
   product_code: string | null; // 자동 등록 품목은 NULL
   category: string | null; // 구분
   kind: string | null; // 종류
-  barcode: string | null; // 자동 등록 품목은 NULL 가능
+  barcode: string | null; // 자동 등록 품목은 NULL 가능(대표 바코드)
+  extra_barcode_count?: number; // 추가 바코드(item_barcodes) 개수 — "+N" 표시용
   name: string;
   has_image: boolean;
   created_by: number | null;
@@ -135,10 +136,18 @@ export default function ItemList({
                   <h2 className="font-medium text-[11px] sm:text-xs text-zinc-900 line-clamp-2 leading-snug">
                     {item.name}
                   </h2>
-                  {/* 품목코드 · 바코드 한 줄 (있는 것만) */}
+                  {/* 품목코드 · 바코드 한 줄 (있는 것만) + 추가 바코드 "+N" */}
                   {(item.product_code || item.barcode) && (
                     <p className="mt-0.5 font-mono text-[10px] text-zinc-400 truncate">
                       {[item.product_code, item.barcode].filter(Boolean).join(" · ")}
+                      {item.extra_barcode_count ? (
+                        <span
+                          className="ml-1 text-zinc-400"
+                          title={`추가 바코드 ${item.extra_barcode_count}개`}
+                        >
+                          +{item.extra_barcode_count}
+                        </span>
+                      ) : null}
                     </p>
                   )}
                   {/* 배지: 바코드 미등록 / 숨김 — 품목명 아래 현행 유지 */}

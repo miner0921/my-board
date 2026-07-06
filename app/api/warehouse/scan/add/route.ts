@@ -58,7 +58,10 @@ export async function POST(request: Request) {
       // 추가할 품목 존재 확인 + 카드 표시용 정보
       const itemSel = await client.query(
         `SELECT id, name, barcode, scan_exempt, updated_at,
-                (image_data IS NOT NULL) AS has_image
+                (image_data IS NOT NULL) AS has_image,
+                (barcode IS NOT NULL
+                  OR EXISTS (SELECT 1 FROM item_barcodes b WHERE b.item_id = items.id)
+                ) AS has_barcode
            FROM items
           WHERE id = $1 AND deleted_at IS NULL`,
         [itemId]
@@ -164,6 +167,7 @@ export async function POST(request: Request) {
           quantity,
           scanned_count: scannedCount,
           barcode: item.barcode as string | null,
+          has_barcode: item.has_barcode as boolean,
           updated_at: item.updated_at,
           has_image: item.has_image as boolean,
           scan_exempt: item.scan_exempt as boolean,

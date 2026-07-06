@@ -54,6 +54,15 @@ export async function GET(request: Request, { params }: RouteContext) {
       [id]
     );
 
+    // 추가 바코드 목록 — 수정 모달 "추가 바코드" 섹션 표시용
+    const barcodeRes = await query(
+      `SELECT id, barcode
+         FROM item_barcodes
+        WHERE item_id = $1
+        ORDER BY id`,
+      [id]
+    );
+
     await logAccess({
       session,
       action: "item.read",
@@ -62,7 +71,11 @@ export async function GET(request: Request, { params }: RouteContext) {
       request,
     });
 
-    return NextResponse.json({ item: result.rows[0], aliases: aliasRes.rows });
+    return NextResponse.json({
+      item: result.rows[0],
+      aliases: aliasRes.rows,
+      barcodes: barcodeRes.rows,
+    });
   } catch (error) {
     console.error("품목 조회 에러:", error);
     return NextResponse.json(

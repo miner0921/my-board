@@ -53,12 +53,21 @@ type ItemPayload = {
   display_name: string | null;
   name: string;
   barcode: string | null;
+  // 대표(barcode) 또는 추가 바코드(item_barcodes)가 하나라도 있으면 true.
+  //   스캔 가능 여부 = 수동 챙김 대상 여부 판정에 쓴다(대표 없어도 추가만 있으면 스캔 가능).
+  has_barcode?: boolean;
   has_image: boolean;
   updated_at: string;
   is_added_on_scan?: boolean;
   scan_exempt?: boolean;
   // 취소(excluded)된 품목 — items 에 남겨두되 카드/진행률에선 제외, OrderText 에선 "(취소)".
   excluded?: boolean;
+}
+
+// 품목이 스캔 가능한(=수동 챙김 대상이 아닌) 바코드를 갖고 있는지.
+//   서버 payload 의 has_barcode 를 우선 쓰고, 없으면 대표 바코드 유무로 폴백.
+function hasAnyBarcode(it: { has_barcode?: boolean; barcode: string | null }): boolean {
+  return it.has_barcode ?? it.barcode !== null;
 };
 
 // "전체 상품"(OrderText)용 송장 원문 라인. 별칭으로 합쳐지기 전 원문 그대로.
@@ -248,6 +257,7 @@ export default function ScanPage() {
         {
           display_name: null,
           barcode: null,
+          has_barcode: false,
           has_image: false,
           updated_at: new Date().toISOString(),
           is_added_on_scan: true,
@@ -803,6 +813,7 @@ export default function ScanPage() {
       display_name: it.display_name,
       name: it.name,
       barcode: it.barcode,
+      has_barcode: it.has_barcode,
       has_image: it.has_image,
       updated_at: it.updated_at,
       is_added_on_scan: it.is_added_on_scan,
@@ -830,8 +841,9 @@ export default function ScanPage() {
     setStatusKind("ok");
     setStatusMsg(`${it.name} ${label}`);
 
-    // 바코드 없는 품목을 새로 넣었으면 수량 입력(수동 챙김)으로 바로 연결
-    if (!it.barcode && result.outcome !== "already_present") {
+    // 바코드가 하나도 없는 품목을 새로 넣었으면 수량 입력(수동 챙김)으로 바로 연결.
+    //   대표는 없어도 추가 바코드가 있으면 스캔 가능 → 자동으로 수동 모달 열지 않음.
+    if (!hasAnyBarcode(card) && result.outcome !== "already_present") {
       setManualTarget(card);
     }
   };
@@ -1156,13 +1168,14 @@ export default function ScanPage() {
                     quantity: it.quantity,
                     scannedCount: it.scanned_count,
                     barcode: it.barcode,
+                    hasBarcode: hasAnyBarcode(it),
                     hasImage: it.has_image,
                     updatedAt: it.updated_at,
                     isAddedOnScan: it.is_added_on_scan === true,
                     scanExempt: it.scan_exempt === true,
                   }}
                   highlighted={lastScannedId === it.invoice_item_id}
-                  onPick={!it.barcode ? () => setManualTarget(it) : undefined}
+                  onPick={!hasAnyBarcode(it) ? () => setManualTarget(it) : undefined}
                   onExclude={() => setExcludeTarget(it)}
                 />
               ))}
@@ -1185,6 +1198,7 @@ export default function ScanPage() {
                   quantity: it.quantity,
                   scannedCount: it.scanned_count,
                   barcode: it.barcode,
+                  hasBarcode: hasAnyBarcode(it),
                   hasImage: it.has_image,
                   updatedAt: it.updated_at,
                   isAddedOnScan: it.is_added_on_scan === true,

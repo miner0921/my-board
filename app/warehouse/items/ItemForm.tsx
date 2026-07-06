@@ -5,6 +5,7 @@ import { splitProductName, buildItemName } from "@/lib/product-name";
 import { itemMatchKey } from "@/lib/resolve-item";
 
 type Alias = { id: number; alias_name: string; normalized_alias: string };
+type Barcode = { id: number; barcode: string };
 
 // ─────────────────────────────────────────────────────────────
 // 품목 등록/수정 공용 폼.
@@ -47,6 +48,12 @@ export default function ItemForm(props: Props) {
   const [aliasError, setAliasError] = useState("");
   const [aliasBusy, setAliasBusy] = useState(false);
 
+  // 추가 바코드(다중 바코드) — edit 에서 모든 로그인 사용자(작업자 포함) 사용.
+  const [barcodes, setBarcodes] = useState<Barcode[]>([]);
+  const [newBarcode, setNewBarcode] = useState("");
+  const [barcodeError, setBarcodeError] = useState("");
+  const [barcodeBusy, setBarcodeBusy] = useState(false);
+
   // 이미지 상태
   const [hasExistingImage, setHasExistingImage] = useState(false);
   const [existingImageStamp, setExistingImageStamp] = useState<number>(0);
@@ -85,6 +92,7 @@ export default function ItemForm(props: Props) {
         setBarcode(data.item.barcode ?? "");
         setScanExempt(!!data.item.scan_exempt);
         setAliases(data.aliases ?? []);
+        setBarcodes(data.barcodes ?? []);
         setHasExistingImage(!!data.item.has_image);
         setExistingImageStamp(new Date(data.item.updated_at).getTime());
       } catch (err) {
@@ -191,6 +199,52 @@ export default function ItemForm(props: Props) {
     } catch (err) {
       console.error(err);
       setAliasError("네트워크 오류가 발생했습니다.");
+    }
+  };
+
+  const handleAddBarcode = async () => {
+    const value = newBarcode.trim();
+    if (!value || editItemId === null) return;
+    setBarcodeError("");
+    setBarcodeBusy(true);
+    try {
+      const res = await fetch(`/api/warehouse/items/${editItemId}/barcodes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ barcode: value }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setBarcodeError(data.error || "바코드 추가에 실패했습니다.");
+        return;
+      }
+      setBarcodes((prev) => [...prev, data.barcode]);
+      setNewBarcode("");
+    } catch (err) {
+      console.error(err);
+      setBarcodeError("네트워크 오류가 발생했습니다.");
+    } finally {
+      setBarcodeBusy(false);
+    }
+  };
+
+  const handleDeleteBarcode = async (barcodeId: number) => {
+    if (editItemId === null) return;
+    setBarcodeError("");
+    try {
+      const res = await fetch(
+        `/api/warehouse/items/${editItemId}/barcodes/${barcodeId}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setBarcodeError(data.error || "바코드 삭제에 실패했습니다.");
+        return;
+      }
+      setBarcodes((prev) => prev.filter((b) => b.id !== barcodeId));
+    } catch (err) {
+      console.error(err);
+      setBarcodeError("네트워크 오류가 발생했습니다.");
     }
   };
 
@@ -322,6 +376,69 @@ export default function ItemForm(props: Props) {
         />
         <p className="text-xs text-zinc-400 mt-1">{barcode.length} / 100자</p>
       </div>
+
+      {/* 추가 바코드(다중 바코드) — 수정 모드 · 모든 로그인 사용자(작업자 포함) */}
+      {isEdit && (
+        <div className="border-t border-zinc-100 pt-4">
+          <label className="block text-sm font-medium text-zinc-700 mb-1">
+            추가 바코드{" "}
+            <span className="text-zinc-400 text-xs">(대표 외 · 스캔 인식용)</span>
+          </label>
+          <p className="text-xs text-zinc-400 mb-2">
+            같은 품목에 여러 바코드가 붙는 경우 등록하세요. 스캔 시 대표·추가 어느
+            바코드든 이 품목으로 인식됩니다. 대표 바코드와 같은 값은 등록할 수 없습니다.
+          </p>
+
+          {barcodes.length > 0 && (
+            <ul className="flex flex-wrap gap-1.5 mb-2">
+              {barcodes.map((b) => (
+                <li
+                  key={b.id}
+                  className="inline-flex items-center gap-1 pl-2 pr-1 py-1 bg-zinc-100 rounded text-xs font-mono text-zinc-700"
+                >
+                  <span>{b.barcode}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteBarcode(b.id)}
+                    className="text-zinc-400 hover:text-red-600 leading-none px-1"
+                    aria-label="바코드 삭제"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newBarcode}
+              onChange={(e) => setNewBarcode(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleAddBarcode();
+                }
+              }}
+              placeholder="추가 바코드 입력"
+              maxLength={100}
+              className="flex-1 px-3 py-2 border border-zinc-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900"
+            />
+            <button
+              type="button"
+              onClick={handleAddBarcode}
+              disabled={barcodeBusy || !newBarcode.trim()}
+              className="px-4 py-2 border border-zinc-300 rounded-lg text-sm hover:bg-zinc-50 transition disabled:opacity-40"
+            >
+              {barcodeBusy ? "추가 중..." : "추가"}
+            </button>
+          </div>
+          {barcodeError && (
+            <p className="text-xs text-red-600 mt-1">{barcodeError}</p>
+          )}
+        </div>
+      )}
 
       {/* 스캔 불필요 */}
       <label className="flex items-start gap-2 cursor-pointer select-none">

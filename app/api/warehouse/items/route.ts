@@ -42,7 +42,11 @@ export async function GET(request: Request) {
         : await query(
             `${baseSelect}
              WHERE i.deleted_at IS NULL
-               AND (i.name ILIKE $1 OR i.barcode ILIKE $1 OR i.product_code ILIKE $1)
+               AND (i.name ILIKE $1 OR i.barcode ILIKE $1 OR i.product_code ILIKE $1
+                    OR EXISTS (
+                      SELECT 1 FROM item_barcodes b
+                       WHERE b.item_id = i.id AND b.barcode ILIKE $1
+                    ))
              ORDER BY i.created_at DESC`,
             [`%${q}%`]
           );

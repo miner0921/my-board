@@ -149,9 +149,19 @@ export async function POST(request: Request) {
       });
     }
 
-    // ── 2~5) items.barcode 매칭 검사 ──────────────────────────
+    // ── 2~5) 바코드 → 품목 매칭 검사 (대표 + 추가 바코드) ─────────
+    // 대표 바코드(items.barcode) 또는 추가 바코드(item_barcodes) 어느 쪽이든 매칭.
+    // 같은 바코드를 여러 품목이 공유할 수 있으므로(016 · 실서버 19쌍) LIMIT 1 —
+    // 여기서 고른 품목은 no_invoice/wrong_item/force-add 판정용. 실제 검수는
+    // 아래 "송장 범위 매칭"이 현재 송장 품목 기준으로 다시 잡는다(2단계 구조).
     const itemMatch = await query(
-      `SELECT id, name FROM items WHERE barcode = $1 LIMIT 1`,
+      `SELECT id, name FROM items
+        WHERE barcode = $1
+           OR EXISTS (
+             SELECT 1 FROM item_barcodes b
+              WHERE b.item_id = items.id AND b.barcode = $1
+           )
+        LIMIT 1`,
       [barcode]
     );
 
@@ -247,14 +257,21 @@ export async function POST(request: Request) {
 
       // 품목 행 락 (+ 바코드/이름 — 송장 기반 바코드 매칭에 사용)
       // 제외된 품목(excluded_at)은 매칭/진행률/완료 판정 모두에서 빠진다.
+      // matches_scan: 이 품목의 대표 바코드 또는 추가 바코드가 스캔값($2)과 일치하는가.
+      //   → 다중 바코드 매칭을 SQL 한 곳에서 계산(대표+추가 어느 쪽이든 true).
       const rowsRes = await client.query(
         `SELECT ii.id AS invoice_item_id, ii.item_id, ii.quantity, ii.scanned_count,
-                it.name AS item_name, it.barcode AS item_barcode, it.scan_exempt
+                it.name AS item_name, it.barcode AS item_barcode, it.scan_exempt,
+                (it.barcode = $2
+                  OR EXISTS (
+                    SELECT 1 FROM item_barcodes b
+                     WHERE b.item_id = it.id AND b.barcode = $2
+                  )) AS matches_scan
            FROM invoice_items ii
            JOIN items it ON it.id = ii.item_id
           WHERE ii.invoice_id = $1 AND ii.excluded_at IS NULL
           FOR UPDATE OF ii`,
-        [currentInvoiceId]
+        [currentInvoiceId, barcode]
       );
       const rows: Array<{
         invoice_item_id: number;
@@ -264,12 +281,14 @@ export async function POST(request: Request) {
         item_name: string;
         item_barcode: string | null;
         scan_exempt: boolean;
+        matches_scan: boolean;
       }> = rowsRes.rows;
 
       // 송장 기반 매칭: 스캔한 바코드를 "현재 송장 품목" 중에서 찾는다.
+      // 대표/추가 바코드 어느 쪽이든 일치(matches_scan)하면 후보.
       // 같은 바코드 품목이 여럿이면 아직 안 찍힌 것(scanned_count < quantity) 우선,
       // 모두 다 찍혔으면 그 중 첫 번째(초과 확인 흐름으로).
-      const candidates = rows.filter((r) => r.item_barcode === barcode);
+      const candidates = rows.filter((r) => r.matches_scan);
       const target =
         candidates.find((r) => r.scanned_count < r.quantity) ?? candidates[0];
 
@@ -337,6 +356,7 @@ export async function POST(request: Request) {
               item_name: matchedItem.name as string,
               item_barcode: null,
               scan_exempt: false,
+              matches_scan: true,
             },
           ];
           // 완료 판정은 모든 품목 기준 (동봉 포함 — 검수 제외 없음)
@@ -383,6 +403,8 @@ export async function POST(request: Request) {
               barcode: itemInfo.rows[0]?.barcode ?? null,
               updated_at: itemInfo.rows[0]?.updated_at ?? new Date().toISOString(),
               has_image: itemInfo.rows[0]?.has_image ?? false,
+              // 바코드로 찍혀 추가된 품목이므로 바코드 보유 확정(수동 챙김 대상 아님).
+              has_barcode: true,
               is_added_on_scan: newRow.is_added_on_scan,
             },
             invoice: {
@@ -729,7 +751,10 @@ async function loadInvoiceFull(invoiceId: number): Promise<{
          (ii.excluded_at IS NOT NULL) AS excluded,
          ii.is_added_on_scan,
          it.name, it.barcode, it.updated_at, it.scan_exempt,
-         (it.image_data IS NOT NULL) AS has_image
+         (it.image_data IS NOT NULL) AS has_image,
+         (it.barcode IS NOT NULL
+           OR EXISTS (SELECT 1 FROM item_barcodes b WHERE b.item_id = it.id)
+         ) AS has_barcode
        FROM invoice_items ii
        JOIN items it ON it.id = ii.item_id
        WHERE ii.invoice_id = $1
