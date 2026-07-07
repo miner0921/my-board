@@ -77,9 +77,6 @@ export default function DeleteInvoiceButton({ invoiceId, invoiceNo }: Props) {
         <EyeOff size={16} strokeWidth={1.75} />
         송장 삭제
       </button>
-      <p className="text-[11px] text-zinc-400 text-center mt-2">
-        목록에서 삭제되며 복구할 수 있습니다 (검수기록 보존)
-      </p>
 
       {open && (
         <div

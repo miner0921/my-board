@@ -10,6 +10,7 @@ import StatusFilterSelect from "./StatusFilterSelect";
 import {
   BulkSelectProvider,
   BulkActionButton,
+  InvoiceManualCompleteBulkButton,
 } from "../_components/BulkSelect";
 import {
   fetchInvoiceList,
@@ -65,7 +66,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
   // 상태 필터 — 탭별 화이트리스트(아니면 "all"). 완료=완료/부분완료, 대기=대기/검수중.
   const STATUS_OPTIONS =
     tab === "done"
-      ? ["all", "completed", "completed_partial"]
+      ? ["all", "completed", "completed_partial", "manual_completed"]
       : ["all", "waiting", "inspecting"];
   const statusFilter =
     statusParam && STATUS_OPTIONS.includes(statusParam) ? statusParam : "all";
@@ -207,6 +208,7 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
                 { value: "all", label: "상태: 전체" },
                 { value: "completed", label: "완료" },
                 { value: "completed_partial", label: "부분완료" },
+                { value: "manual_completed", label: "수동완료" },
               ]}
             />
           )}
@@ -234,6 +236,10 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
               >
                 초기화
               </Link>
+            )}
+            {/* 수동완료(다건) — 대기 탭에서만 노출(완료 탭·삭제 보기 제외) */}
+            {!viewDeleted && tab === "pending" && (
+              <InvoiceManualCompleteBulkButton />
             )}
             <BulkActionButton
               resource="invoices"

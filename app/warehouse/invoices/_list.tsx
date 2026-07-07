@@ -36,6 +36,13 @@ export function statusBadge(status: string, scannedQty = 0) {
       </span>
     );
   }
+  if (status === "manual_completed") {
+    return (
+      <span className="inline-block px-2 py-0.5 text-xs rounded bg-purple-50 text-purple-700 border border-purple-200">
+        수동완료
+      </span>
+    );
+  }
   // pending: 진행 중(스캔된 것 있음)이면 "검수중", 아니면 "대기".
   if (scannedQty > 0) {
     return (

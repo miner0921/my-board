@@ -2,8 +2,10 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { query } from "@/lib/db";
+import { isCompletedStatus } from "@/lib/invoice-status";
 import { RefreshCw, ScanLine } from "lucide-react";
 import ReopenButton from "./ReopenButton";
+import ManualCompleteButton from "./ManualCompleteButton";
 import RestoreItemButton from "./RestoreItemButton";
 import ExcludeItemButton from "./ExcludeItemButton";
 import DeleteInvoiceButton from "./DeleteInvoiceButton";
@@ -251,6 +253,10 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
             ) : invoice.status === "completed_partial" ? (
               <span className="px-3 py-1 text-sm rounded bg-amber-50 text-amber-800 border border-amber-300">
                 부분 완료
+              </span>
+            ) : invoice.status === "manual_completed" ? (
+              <span className="px-3 py-1 text-sm rounded bg-purple-50 text-purple-700 border border-purple-200">
+                수동완료
               </span>
             ) : (
               <span className="px-3 py-1 text-sm rounded bg-amber-50 text-amber-700 border border-amber-200">
@@ -568,14 +574,17 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
             <ScanLine size={16} strokeWidth={1.75} />
             출고 검수로 이동
           </Link>
-          <p className="text-[11px] text-zinc-400 text-center mt-2">
-            검수 페이지에서 이 송장 바코드({invoice.invoice_no})를 스캔하세요
-          </p>
+          <div className="mt-3">
+            <ManualCompleteButton
+              invoiceId={invoice.id}
+              invoiceNo={invoice.invoice_no}
+              recipientName={invoice.recipient_name}
+            />
+          </div>
         </div>
       )}
       {/* 검수 재개 — 로그인한 작업자 전원(재개 이력에 재개자 id 기록) */}
-      {(invoice.status === "completed" ||
-        invoice.status === "completed_partial") && (
+      {isCompletedStatus(invoice.status) && (
           <div className="mt-6">
             <ReopenButton
               invoiceId={invoice.id}

@@ -2,43 +2,35 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCw } from "lucide-react";
+import { CheckCheck } from "lucide-react";
 
 type Props = {
   invoiceId: number;
   invoiceNo: string;
-  scannedQty: number;
-  totalQty: number;
+  recipientName: string | null;
 };
 
-// 완료/부분완료 송장을 다시 검수 가능 상태로 되돌리는 버튼 + 모달.
-// 한 곳에서만 쓰이므로 한 파일로 통합.
+// 대기(pending) 송장을 스캔 없이 "수동완료" 처리하는 버튼 + 확인 모달(단건).
+// API: POST /api/warehouse/invoices/manual-complete  body { invoice_id }.
 //
-// 성공 시 /warehouse/scan으로 이동 — 작업자가 송장 바코드를
-// 다시 스캔해 단일 입력란 흐름으로 자연스럽게 재개.
-//
-// 재개 사유는 선택사항. 빈 값으로 보내도 진행 가능 (서버가 NULL로 저장).
-export default function ReopenButton({
+// ★ Enter 자동 확정 방지: 스캐너가 쏘는 Enter로 모달이 자동 승인되던 이력 때문에
+//   Enter 핸들러를 아예 걸지 않는다(물리적 클릭만 실행). 마운트 시 [취소]에 focus,
+//   ESC로만 닫힌다. (ReopenButton 모달과 동일한 방식.)
+export default function ManualCompleteButton({
   invoiceId,
   invoiceNo,
-  scannedQty,
-  totalQty,
+  recipientName,
 }: Props) {
   const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   const cancelBtnRef = useRef<HTMLButtonElement | null>(null);
   const router = useRouter();
 
-  const trimmed = reason.trim();
-  const canSubmit = !submitting;
-
   useEffect(() => {
     if (!open) return;
-    // 마운트 시 [취소]에 focus. textarea가 아니라 버튼에 두는 이유는
-    // 스캐너가 발생시킬 수 있는 우연한 키 입력이 textarea로 흘러들지 않게 하기 위함.
+    // 스캐너 우발 입력이 확인으로 흘러들지 않도록 [취소] 버튼에 focus.
     cancelBtnRef.current?.focus();
   }, [open]);
 
@@ -58,30 +50,36 @@ export default function ReopenButton({
     if (submitting) return;
     setOpen(false);
     setError("");
-    setReason("");
   };
 
   const handleSubmit = async () => {
-    if (!canSubmit) return;
+    if (submitting) return;
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch(
-        `/api/warehouse/invoices/${invoiceId}/reopen`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reason: trimmed }),
-        }
-      );
+      const res = await fetch("/api/warehouse/invoices/manual-complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoice_id: invoiceId }),
+      });
       const data = await res.json();
       if (!res.ok) {
-        setError(data?.message || data?.error || "재개에 실패했습니다.");
+        setError(data?.error || "수동완료에 실패했습니다.");
         setSubmitting(false);
         return;
       }
-      // 검수 페이지로 이동 (단일 입력란에서 송장 바코드 다시 스캔)
-      router.push("/warehouse/scan");
+      const completed: number = data?.completed ?? 0;
+      const skippedCount: number = Array.isArray(data?.skipped)
+        ? data.skipped.length
+        : 0;
+      const msg =
+        skippedCount > 0
+          ? `${completed}건 수동완료 완료. ${skippedCount}건은 이미 처리되어 건너뜀.`
+          : `${completed}건 수동완료 완료.`;
+      setOpen(false);
+      alert(msg);
+      // 상세 서버 컴포넌트 재조회 → 상태가 manual_completed로 바뀌고 버튼이 숨겨진다.
+      router.refresh();
     } catch (e) {
       console.error(e);
       setError("네트워크 오류가 발생했습니다.");
@@ -94,10 +92,10 @@ export default function ReopenButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex items-center justify-center gap-1.5 w-full py-3 rounded-lg text-sm font-medium border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 transition"
+        className="flex items-center justify-center gap-1.5 w-full py-3 rounded-lg text-sm font-medium border border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 transition"
       >
-        <RefreshCw size={16} strokeWidth={1.75} />
-        검수 재개
+        <CheckCheck size={16} strokeWidth={1.75} />
+        수동완료
       </button>
 
       {open && (
@@ -108,22 +106,17 @@ export default function ReopenButton({
         >
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 my-8">
             <div className="flex items-start gap-3 mb-4">
-              <RefreshCw
+              <CheckCheck
                 size={28}
                 strokeWidth={1.75}
-                className="shrink-0 text-amber-600 mt-0.5"
+                className="shrink-0 text-purple-600 mt-0.5"
               />
               <div className="flex-1">
                 <h2 className="text-lg font-semibold text-zinc-900">
-                  검수 재개
+                  수동완료
                 </h2>
                 <p className="text-sm text-zinc-600 mt-1">
-                  이 송장을 다시 검수 가능 상태로 만듭니다.
-                  <br />
-                  <span className="text-xs text-zinc-500">
-                    현재 진행률({scannedQty}/{totalQty})은 보존되며,
-                    재개 이력은 영구 기록됩니다.
-                  </span>
+                  이 송장을 수동완료 처리합니다. 계속하시겠습니까?
                 </p>
               </div>
             </div>
@@ -132,25 +125,12 @@ export default function ReopenButton({
               <p className="text-[11px] text-zinc-500 mb-0.5">송장번호</p>
               <p className="text-sm font-mono text-zinc-900 break-all">
                 {invoiceNo}
+                {recipientName ? (
+                  <span className="ml-2 font-sans text-zinc-500">
+                    · {recipientName}
+                  </span>
+                ) : null}
               </p>
-            </div>
-
-            <div className="mb-4">
-              <label
-                htmlFor="reopen-reason"
-                className="block text-xs text-zinc-500 mb-1"
-              >
-                재개 사유 (선택)
-              </label>
-              <textarea
-                id="reopen-reason"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                disabled={submitting}
-                rows={3}
-                placeholder="예: 망고 1개 추가 요청"
-                className="w-full px-3 py-2 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"
-              />
             </div>
 
             {error && (
@@ -172,10 +152,10 @@ export default function ReopenButton({
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={!canSubmit}
-                className="flex-1 py-3 rounded-lg text-sm font-medium bg-amber-600 text-white hover:bg-amber-700 transition disabled:bg-zinc-300 disabled:cursor-not-allowed"
+                disabled={submitting}
+                className="flex-1 py-3 rounded-lg text-sm font-medium bg-purple-600 text-white hover:bg-purple-700 transition disabled:bg-zinc-300 disabled:cursor-not-allowed"
               >
-                {submitting ? "처리 중..." : "재개 진행"}
+                {submitting ? "처리 중..." : "수동완료 진행"}
               </button>
             </div>
           </div>

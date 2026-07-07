@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { logAccess } from "@/lib/audit";
 import { parseProductName } from "@/lib/parse-product";
 import { loadItemIndex } from "@/lib/resolve-item";
+import { isCompletedStatus } from "@/lib/invoice-status";
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/warehouse/scan
@@ -77,7 +78,7 @@ export async function POST(request: Request) {
     if (invMatch.rows.length > 0) {
       const nextInv = invMatch.rows[0];
 
-      if (nextInv.status === "completed") {
+      if (isCompletedStatus(nextInv.status)) {
         return NextResponse.json(
           { type: "scan_unknown", message: "이미 완료된 송장입니다." },
           { status: 409 }
@@ -408,6 +409,7 @@ export async function POST(request: Request) {
                 WHERE id = $2
                   AND status <> 'completed'
                   AND status <> 'completed_partial'
+                  AND status <> 'manual_completed'
                 RETURNING completed_at`,
               [userId, currentInvoiceId]
             );
@@ -537,6 +539,7 @@ export async function POST(request: Request) {
             WHERE id = $2
               AND status <> 'completed'
               AND status <> 'completed_partial'
+              AND status <> 'manual_completed'
             RETURNING completed_at`,
           [userId, currentInvoiceId]
         );

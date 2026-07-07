@@ -3,10 +3,11 @@ import { revalidatePath } from "next/cache";
 import { withTransaction } from "@/lib/db";
 import { auth } from "@/auth";
 import { logAccess } from "@/lib/audit";
+import { isCompletedStatus } from "@/lib/invoice-status";
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/warehouse/invoices/[id]/reopen
-// 완료(completed) / 결품 완료(completed_partial) 송장을 다시 pending으로.
+// 완료 상태(completed / completed_partial / manual_completed) 송장을 다시 pending으로.
 // 로그인한 작업자 전원 가능 — reopened_by에 재개한 사람 id가 남아 추적된다.
 // reason 은 선택 (빈 값이면 NULL 저장).
 // 재개 직전 상태는 invoice_reopens에 prev_* 로 보존.
@@ -61,7 +62,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         return { kind: "not_found" as const };
       }
       const inv = invRes.rows[0];
-      if (inv.status !== "completed" && inv.status !== "completed_partial") {
+      if (!isCompletedStatus(inv.status)) {
         return { kind: "not_completed" as const };
       }
 

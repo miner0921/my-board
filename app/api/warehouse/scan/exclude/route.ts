@@ -190,7 +190,7 @@ export async function POST(request: Request) {
           `UPDATE invoices
               SET status = 'completed', completed_at = NOW(),
                   completed_by = $1, completion_reason = 'full'
-            WHERE id = $2 AND status <> 'completed' AND status <> 'completed_partial'
+            WHERE id = $2 AND status <> 'completed' AND status <> 'completed_partial' AND status <> 'manual_completed'
             RETURNING completed_at`,
           [userId, invoiceId]
         );

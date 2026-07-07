@@ -46,7 +46,7 @@ export async function GET(request: Request) {
     const statusRaw = url.searchParams.get("status") ?? "all";
     const statusAllowed =
       tab === "done"
-        ? ["all", "completed", "completed_partial"]
+        ? ["all", "completed", "completed_partial", "manual_completed"]
         : ["all", "waiting", "inspecting"];
     const statusFilter = statusAllowed.includes(statusRaw) ? statusRaw : "all";
 

@@ -113,13 +113,15 @@ export async function fetchInvoiceList(
   if (!viewDeleted) {
     if (tab === "done") {
       conditions.push(
-        `i.status IN ('completed', 'completed_partial') AND i.completed_at IS NOT NULL`
+        `i.status IN ('completed', 'completed_partial', 'manual_completed') AND i.completed_at IS NOT NULL`
       );
-      // 완료 탭 상태 필터(완료/부분완료) — status 기반. 전체면 위 IN 그대로.
+      // 완료 탭 상태 필터(완료/부분완료/수동완료) — status 기반. 전체면 위 IN 그대로.
       if (statusFilter === "completed") {
         conditions.push(`i.status = 'completed'`);
       } else if (statusFilter === "completed_partial") {
         conditions.push(`i.status = 'completed_partial'`);
+      } else if (statusFilter === "manual_completed") {
+        conditions.push(`i.status = 'manual_completed'`);
       }
     } else {
       conditions.push(`i.status = 'pending'`);

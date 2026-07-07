@@ -22,6 +22,7 @@ import {
   initAudio,
   vibrate,
 } from "@/lib/feedback";
+import { isCompletedStatus } from "@/lib/invoice-status";
 
 // ─────────────────────────────────────────────────────────────
 // 단일 입력란 구조의 검수 화면.
@@ -191,8 +192,7 @@ export default function ScanPage() {
   // 송장이 완료/부분완료 상태면 "세션 끝" — 품목 스캔은 서버에서 자연스럽게
   // scan_no_invoice로 처리되도록 current_invoice_id=null로 보냄.
   const isSessionDone =
-    invoice !== null &&
-    (invoice.status === "completed" || invoice.status === "completed_partial");
+    invoice !== null && isCompletedStatus(invoice.status);
 
   const resetAndFocus = useCallback(() => {
     setInput("");
@@ -1030,6 +1030,10 @@ export default function ScanPage() {
                   ) : invoice.status === "completed_partial" ? (
                     <Badge tone="amber">
                       부분 완료 · {invoice.scanned_qty}/{invoice.total_qty}
+                    </Badge>
+                  ) : invoice.status === "manual_completed" ? (
+                    <Badge tone="purple">
+                      수동완료 · {invoice.scanned_qty}/{invoice.total_qty}
                     </Badge>
                   ) : (
                     <Badge tone="amber">

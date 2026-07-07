@@ -5,10 +5,12 @@ import {
   useContext,
   useState,
   useCallback,
+  useEffect,
+  useRef,
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import { EyeOff, RotateCcw } from "lucide-react";
+import { EyeOff, RotateCcw, CheckCheck } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────
 // 목록 일괄 선택 → 숨김/복구 (품목·송장 공용, 관리자 전용).
@@ -188,5 +190,146 @@ export function BulkActionButton({
         </>
       )}
     </button>
+  );
+}
+
+// 대기 탭 다중선택 → "수동완료"(스캔 없이 완료 처리) 버튼 + 확인 모달.
+//   API: POST /api/warehouse/invoices/manual-complete  body { ids }.
+//   ★ Enter 자동 확정 방지: confirm() 대신 커스텀 모달을 쓰고 Enter 핸들러를 걸지
+//     않는다(물리적 클릭만). 마운트 시 [취소]에 focus, ESC로만 닫힘.
+//     (ReopenButton 모달과 동일한 방식 — 스캐너 Enter 오작동 이력 대응.)
+//   ※ 배치 위치(대기 탭에서만 노출)는 호출 측 page.tsx에서 결정한다.
+export function InvoiceManualCompleteBulkButton() {
+  const { selected, clear } = useBulk();
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const cancelBtnRef = useRef<HTMLButtonElement | null>(null);
+  const count = selected.size;
+
+  useEffect(() => {
+    if (!open) return;
+    cancelBtnRef.current?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !submitting) {
+        e.preventDefault();
+        setOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [open, submitting]);
+
+  const handleClose = () => {
+    if (submitting) return;
+    setOpen(false);
+    setError("");
+  };
+
+  const handleSubmit = async () => {
+    if (submitting || count === 0) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await fetch("/api/warehouse/invoices/manual-complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [...selected] }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data?.error || "수동완료에 실패했습니다.");
+        setSubmitting(false);
+        return;
+      }
+      const completed: number = data?.completed ?? 0;
+      const skippedCount: number = Array.isArray(data?.skipped)
+        ? data.skipped.length
+        : 0;
+      const msg =
+        skippedCount > 0
+          ? `${completed}건 수동완료 완료. ${skippedCount}건은 이미 처리되어 건너뜀.`
+          : `${completed}건 수동완료 완료.`;
+      setOpen(false);
+      alert(msg);
+      clear();
+      router.refresh();
+    } catch (e) {
+      console.error(e);
+      setError("네트워크 오류가 발생했습니다.");
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        disabled={count === 0}
+        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-40 disabled:cursor-not-allowed border border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100"
+      >
+        <CheckCheck size={15} strokeWidth={1.75} />
+        수동완료
+      </button>
+
+      {open && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
+        >
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 my-8">
+            <div className="flex items-start gap-3 mb-4">
+              <CheckCheck
+                size={28}
+                strokeWidth={1.75}
+                className="shrink-0 text-purple-600 mt-0.5"
+              />
+              <div className="flex-1">
+                <h2 className="text-lg font-semibold text-zinc-900">
+                  수동완료
+                </h2>
+                <p className="text-sm text-zinc-600 mt-1">
+                  선택한 {count}건을 수동완료 처리합니다. 계속하시겠습니까?
+                </p>
+              </div>
+            </div>
+
+            {error && (
+              <div className="mb-4 p-2.5 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+                {error}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                ref={cancelBtnRef}
+                type="button"
+                onClick={handleClose}
+                disabled={submitting}
+                className="flex-1 py-3 rounded-lg text-sm font-medium border border-zinc-300 text-zinc-700 hover:bg-zinc-50 transition disabled:opacity-50"
+              >
+                취소 (ESC)
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="flex-1 py-3 rounded-lg text-sm font-medium bg-purple-600 text-white hover:bg-purple-700 transition disabled:bg-zinc-300 disabled:cursor-not-allowed"
+              >
+                {submitting ? "처리 중..." : "수동완료 진행"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
