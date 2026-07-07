@@ -13,6 +13,7 @@ import {
 } from "../_components/BulkSelect";
 import {
   fetchInvoiceList,
+  countPendingInvoices,
   INVOICE_PAGE_SIZE,
   type InvoiceListFilters,
   type InvoiceTab,
@@ -92,6 +93,9 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
     { limit: INVOICE_PAGE_SIZE }
   );
 
+  // 대기 탭 라벨 뱃지용 전체 건수 — 필터와 무관한 고정 총량(삭제 보기 아닐 때만).
+  const pendingCount = viewDeleted ? 0 : await countPendingInvoices();
+
   // 추가 로드 API로 넘길 현재 필터(q/type/from/to)만 담은 쿼리스트링.
   const apiSp = new URLSearchParams();
   if (q) apiSp.set("q", q);
@@ -150,6 +154,9 @@ export default async function InvoiceListPage({ searchParams }: PageProps) {
             }`}
           >
             대기
+            <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-600 align-middle">
+              {pendingCount}
+            </span>
           </Link>
           <Link
             href={buildHref({ tab: "done" })}

@@ -65,6 +65,18 @@ function toIso(v: unknown): string | null {
   return String(v);
 }
 
+// 대기 탭 전체 건수 (★ 서버 전용).
+//   검색·분류·날짜·상태(대기/검수중) 필터와 무관한 고정 총량.
+//   조건은 대기 탭을 규정하는 두 가지(soft delete + status)만.
+export async function countPendingInvoices(): Promise<number> {
+  const result = await query(
+    `SELECT COUNT(*)::int AS count
+       FROM invoices i
+      WHERE i.deleted_at IS NULL AND i.status = 'pending'`
+  );
+  return result.rows[0]?.count ?? 0;
+}
+
 // 송장 목록 조회 (★ 서버 전용 — pg 풀 사용).
 //   - 필터(q/type/from/to)는 ★ 항상 DB 전체에 WHERE로 적용. "로드된 것만 검색"이 아님.
 //   - opts.limit 지정(완료 탭): keyset 페이지네이션. limit+1 fetch로 hasMore 판정.
