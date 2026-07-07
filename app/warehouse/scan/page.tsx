@@ -305,6 +305,9 @@ export default function ScanPage() {
         return;
       }
 
+      // handleScanResponse는 뒤에서 선언되지만 매 렌더 재생성되어 stale 캡처 없음.
+      //   (자동 스캔 effect 도입으로 규칙이 이 forward-ref를 감지 → 안전하므로 무시)
+      // eslint-disable-next-line react-hooks/immutability
       handleScanResponse(data, value, opts.force === true);
     } catch (e) {
       console.error(e);
@@ -318,6 +321,22 @@ export default function ScanPage() {
       resetAndFocus();
     }
   };
+
+  // URL ?code= 로 진입 시(송장 상세 "출고 검수로 이동") 해당 송장을 자동으로 연다.
+  //   물리 바코드 스캔과 동일하게 sendScan → invoice_start 경로를 그대로 재사용한다.
+  //   StrictMode 이중 실행 방지용 1회성 가드 + 실행 직후 ?code 제거(새로고침 재실행 방지).
+  const autoScannedRef = useRef(false);
+  useEffect(() => {
+    if (autoScannedRef.current) return;
+    autoScannedRef.current = true;
+    const code = new URLSearchParams(window.location.search).get("code");
+    if (!code) return;
+    // ?code 는 즉시 제거(새로고침 재실행 방지). 스캔은 매크로태스크로 미뤄
+    //   effect 본문에서 동기 setState가 일어나지 않게 한다.
+    window.history.replaceState(null, "", window.location.pathname);
+    setTimeout(() => sendScan(code), 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   type ScanResponse =
     | {

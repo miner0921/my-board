@@ -3,9 +3,10 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { query } from "@/lib/db";
 import { isCompletedStatus } from "@/lib/invoice-status";
-import { RefreshCw, ScanLine } from "lucide-react";
+import { RefreshCw, ScanLine, Pencil } from "lucide-react";
 import ReopenButton from "./ReopenButton";
 import ManualCompleteButton from "./ManualCompleteButton";
+import EditInvoiceNoButton from "./EditInvoiceNoButton";
 import RestoreItemButton from "./RestoreItemButton";
 import ExcludeItemButton from "./ExcludeItemButton";
 import DeleteInvoiceButton from "./DeleteInvoiceButton";
@@ -73,6 +74,13 @@ type ReopenEntry = {
   prev_status: string | null;
   prev_completion_reason: string | null;
   reopened_by_name: string | null;
+};
+
+type NoChangeEntry = {
+  old_no: string;
+  new_no: string;
+  changed_at: string;
+  changed_by_name: string | null;
 };
 
 type InvoiceItem = {
@@ -152,7 +160,8 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
 
   const { id } = await params;
 
-  const [invResult, itemsResult, reopensResult, logsResult] = await Promise.all([
+  const [invResult, itemsResult, reopensResult, logsResult, noChangesResult] =
+    await Promise.all([
     query(
       `SELECT
          i.id, i.invoice_no, i.order_no, i.status,
@@ -220,6 +229,16 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
         ORDER BY s.scanned_at ASC, s.id ASC`,
       [id]
     ),
+    // 송장번호 변경 이력 (최신순)
+    query(
+      `SELECT c.old_no, c.new_no, c.changed_at,
+              u.nickname AS changed_by_name
+         FROM invoice_no_changes c
+         LEFT JOIN users u ON u.id = c.changed_by
+        WHERE c.invoice_id = $1
+        ORDER BY c.changed_at DESC`,
+      [id]
+    ),
   ]);
 
   if (invResult.rows.length === 0) notFound();
@@ -227,6 +246,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
   const items: InvoiceItem[] = itemsResult.rows;
   const reopens: ReopenEntry[] = reopensResult.rows;
   const logs: ScanLog[] = logsResult.rows;
+  const noChanges: NoChangeEntry[] = noChangesResult.rows;
 
   const progressPct =
     invoice.total_qty > 0
@@ -240,9 +260,15 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
         <div className="flex items-start justify-between mb-4 gap-3">
           <div className="min-w-0">
             <p className="text-xs text-zinc-500 mb-1">송장번호</p>
-            <h1 className="text-xl font-bold font-mono text-zinc-900 break-all">
-              {invoice.invoice_no}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold font-mono text-zinc-900 break-all">
+                {invoice.invoice_no}
+              </h1>
+              <EditInvoiceNoButton
+                invoiceId={invoice.id}
+                currentNo={invoice.invoice_no}
+              />
+            </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {customerTypeBadge(invoice.customer_type)}
@@ -265,6 +291,35 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
             )}
           </div>
         </div>
+
+        {/* 송장번호 변경 이력 (있을 때) */}
+        {noChanges.length > 0 && (
+          <div className="mb-4 p-3 bg-zinc-50 border border-zinc-200 rounded-lg">
+            <p className="text-xs font-semibold text-zinc-700 mb-2 flex items-center gap-1.5">
+              <Pencil size={13} strokeWidth={2} />
+              송장번호 변경 이력 ({noChanges.length}건)
+            </p>
+            <ul className="space-y-2 text-xs">
+              {noChanges.map((c, i) => (
+                <li
+                  key={i}
+                  className="flex items-center justify-between gap-3 border-l-2 border-zinc-300 pl-3 py-0.5"
+                >
+                  <span className="font-mono text-zinc-800 break-all">
+                    {c.old_no} <span className="text-zinc-400">→</span>{" "}
+                    {c.new_no}
+                  </span>
+                  <span className="shrink-0 text-zinc-500">
+                    {formatDate(c.changed_at)}
+                    {c.changed_by_name && (
+                      <span className="text-zinc-400"> · {c.changed_by_name}</span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* 메타 */}
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm pb-4 border-b border-zinc-100">
@@ -407,11 +462,22 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
                 return (
                   <li
                     key={r.id}
-                    className={`border-l-2 pl-3 py-0.5 ${
+                    className={`flex items-start justify-between gap-3 border-l-2 pl-3 py-0.5 ${
                       isAuto ? "border-blue-300" : "border-zinc-300"
                     }`}
                   >
-                    <p className="text-zinc-600">
+                    <div className="min-w-0">
+                      {r.reason && (
+                        <p className="text-zinc-800">
+                          <span className="text-zinc-500">사유:</span> {r.reason}
+                        </p>
+                      )}
+                      <p className="text-zinc-500 mt-0.5">
+                        이전 상태:{" "}
+                        <span className="text-zinc-700">{prevLabel}</span>
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-right text-zinc-600">
                       {formatDate(r.reopened_at)}
                       {r.reopened_by_name && (
                         <span className="text-zinc-400">
@@ -424,15 +490,6 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
                           자동 재개
                         </span>
                       )}
-                    </p>
-                    {r.reason && (
-                      <p className="text-zinc-800 mt-0.5">
-                        <span className="text-zinc-500">사유:</span> {r.reason}
-                      </p>
-                    )}
-                    <p className="text-zinc-500 mt-0.5">
-                      이전 상태:{" "}
-                      <span className="text-zinc-700">{prevLabel}</span>
                     </p>
                   </li>
                 );
@@ -568,7 +625,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
       {invoice.status === "pending" && (
         <div className="mt-6">
           <Link
-            href="/warehouse/scan"
+            href={`/warehouse/scan?code=${encodeURIComponent(invoice.invoice_no)}`}
             className="flex items-center justify-center gap-1.5 w-full py-3 rounded-lg text-sm font-medium bg-zinc-900 text-white hover:bg-zinc-800 transition"
           >
             <ScanLine size={16} strokeWidth={1.75} />
