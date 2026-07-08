@@ -4,21 +4,23 @@ import { useEffect, useRef, useState } from "react";
 
 // ─────────────────────────────────────────────────────────────
 // 카메라 바코드 스캐너 — @zxing/browser 로 후면 카메라 영상에서 1D 바코드 디코드.
-//   - 마운트 시 카메라 start, 언마운트 시 track stop(리소스 정리).
-//   - 디코드되면 onDetected(text) 콜백으로 넘긴다(연결은 상위 뷰가 담당).
-//   - 권한 거부 / 카메라 없음 → 에러 대신 안내 표시, 텍스트 입력칸으로 폴백.
-//   - zxing 은 동적 import(브라우저 전용) — SSR 에서 로드되지 않게 한다.
-//   - facingMode: environment 는 "선호"(exact 아님)라 후면 카메라 없는 데스크톱은
-//     사용 가능한 카메라로 자동 폴백된다.
+//   - 단계 분리: (A) getUserMedia 로 스트림 확보 → (B) zxing 이 그 스트림을 디코드.
+//     어느 단계에서 실패했는지(stage)와 error.name/message 를 화면에 그대로 표시(진단).
+//   - 후면 카메라는 exact 가 아니라 ideal(선호). 실패하면 제약 없이(video:true) 재시도.
+//   - 마운트 시 start, 언마운트 시 디코딩 중단 + 스트림 트랙 stop(리소스 정리).
+//   - zxing 은 동적 import(브라우저 전용) — SSR 에서 로드되지 않게.
 // ─────────────────────────────────────────────────────────────
 
 type Props = {
   onDetected: (text: string) => void;
 };
 
+type ErrorInfo = { stage: string; name: string; message: string };
+
 export default function CameraScanner({ onDetected }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null);
 
   // onDetected 를 ref 로 잡아, 콜백이 바뀌어도 카메라 effect 재실행(재시작) 없이
   //   항상 최신 콜백을 쓴다. (렌더 중이 아니라 effect 에서 동기화)
@@ -31,10 +33,41 @@ export default function CameraScanner({ onDetected }: Props) {
     // IScannerControls (stop 으로 디코딩 중단 + 스트림 해제)
     let controls: { stop: () => void } | null = null;
     let cancelled = false;
+    let stage = "init";
 
     (async () => {
       try {
-        // 브라우저 전용 — 동적 import 로 SSR 회피 + 코드 스플릿(모바일에서만 로드).
+        const video = videoRef.current;
+        if (!video || cancelled) return;
+
+        // ── (A) getUserMedia — 후면 선호(ideal), 실패하면 제약 없이 폴백 ──
+        stage = "getUserMedia";
+        if (!navigator.mediaDevices?.getUserMedia) {
+          // 비보안 컨텍스트(http) / 미지원 브라우저 등
+          throw new DOMException(
+            "navigator.mediaDevices.getUserMedia 를 쓸 수 없습니다(비보안 컨텍스트 또는 미지원).",
+            "NotSupportedError"
+          );
+        }
+
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: "environment" } },
+          });
+        } catch {
+          // 후면 지정/제약이 원인일 수 있으니 제약 없이 재시도(아무 카메라나).
+          stage = "getUserMedia(fallback video:true)";
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
+        streamRef.current = stream;
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        // ── (B) zxing — 확보한 스트림을 디코드 ──
+        stage = "zxing";
         const { BrowserMultiFormatReader } = await import("@zxing/browser");
         const { DecodeHintType, BarcodeFormat } = await import("@zxing/library");
 
@@ -54,22 +87,19 @@ export default function CameraScanner({ onDetected }: Props) {
         hints.set(DecodeHintType.TRY_HARDER, true);
 
         const reader = new BrowserMultiFormatReader(hints);
-        const video = videoRef.current;
-        if (!video || cancelled) return;
-
-        controls = await reader.decodeFromConstraints(
-          { video: { facingMode: "environment" } },
-          video,
-          (result) => {
-            if (result) onDetectedRef.current(result.getText());
-          }
-        );
-        // 시작 완료 직전에 언마운트됐으면 즉시 정리.
+        controls = await reader.decodeFromStream(stream, video, (result) => {
+          if (result) onDetectedRef.current(result.getText());
+        });
         if (cancelled) controls.stop();
       } catch (e) {
-        console.error("카메라 시작 실패:", e);
+        const err = e as { name?: string; message?: string };
+        console.error("카메라 시작 실패:", stage, e);
         if (!cancelled) {
-          setErrorMsg("카메라를 쓸 수 없습니다. 바코드를 직접 입력하세요.");
+          setErrorInfo({
+            stage,
+            name: err?.name ?? "Error",
+            message: err?.message ?? String(e),
+          });
         }
       }
     })();
@@ -77,13 +107,21 @@ export default function CameraScanner({ onDetected }: Props) {
     return () => {
       cancelled = true;
       controls?.stop();
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
     };
   }, []);
 
-  if (errorMsg) {
+  if (errorInfo) {
     return (
-      <div className="aspect-[2/1] w-full rounded-lg bg-zinc-100 border border-dashed border-zinc-300 flex items-center justify-center px-4 text-center text-zinc-500 text-sm">
-        {errorMsg}
+      <div className="aspect-[2/1] w-full rounded-lg bg-zinc-100 border border-dashed border-zinc-300 flex flex-col items-center justify-center px-4 text-center">
+        <p className="text-sm text-zinc-600">
+          카메라를 쓸 수 없습니다. 바코드를 직접 입력하세요.
+        </p>
+        {/* 진단용 — 폰에서 실제 원인을 눈으로 볼 수 있게 단계 + error.name/message 표시 */}
+        <p className="mt-1 text-[11px] text-zinc-400 break-all">
+          [{errorInfo.stage}] {errorInfo.name}: {errorInfo.message}
+        </p>
       </div>
     );
   }
