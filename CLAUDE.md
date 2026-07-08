@@ -5,21 +5,24 @@
 (과거 함께 있던 게시판 기능은 제거됨 — posts/comments 코드 삭제 완료.)
 
 ## 기술 스택
-- Next.js 15 (App Router)
-- PostgreSQL (Neon 클라우드 + 로컬 개발용)
+- Next.js 16.2.6 (App Router)
+- PostgreSQL (로컬 개발 + Cloud SQL, PostgreSQL 18 서울)
 - NextAuth.js v5
 - Tailwind CSS v4
 - TypeScript
 - bcryptjs, pg
 
 ## 배포 환경
-- Vercel (자동 배포)
-- Neon PostgreSQL (Singapore region)
-- DATABASE_URL과 AUTH_SECRET은 Vercel 환경변수에 설정됨
+- GCP Cloud Run (서비스 manwol-barcode-system, region asia-northeast3 서울)
+- Cloud SQL (PostgreSQL 18, 서울, DB명 warehouse)
+- GitHub: github.com/miner0921/my-board
+- 도메인: manwol-barcode.com
+- 배포 명령: `gcloud run deploy manwol-barcode-system --source . --region asia-northeast3 --env-vars-file .env.deploy.local --quiet`
+- 환경변수 파일: `.env.local`(로컬) / `.env.deploy.local`(배포). 실제 값(DATABASE_URL·AUTH_SECRET 등)은 이 파일들에만 있고 문서·코드에 쓰지 않는다.
 
 ## 기존 인프라 (재사용)
 - 인증: NextAuth + Credentials Provider (auth.ts, auth.config.ts)
-- DB 연결: lib/db.ts의 query 함수 (Neon SSL 자동 처리)
+- DB 연결: lib/db.ts의 query 함수 — env(DATABASE_URL) 기반 pg.Pool, URL 패턴으로 SSL 자동 분기(localhost=SSL끔 / Cloud SQL 유닉스소켓=SSL불필요 / 그 외 원격=SSL)
 - 미들웨어: proxy.ts
 - 셸 UI(사이드바): app/components/AppShell.tsx + Sidebar.tsx
 - 세션 타입: types/next-auth.d.ts
@@ -69,9 +72,11 @@
 - 추가 행은 `quantity=1` 고정이라 수동 챙김으로 N개 set 시 `N/1`로 보일 수 있음(현장 추가분 성격 — force-add와 동일 모델).
 
 ## 사용자 권한
-- 모든 사용자가 로그인만 하면 모든 기능 사용 가능
-- 권한 분리(admin/worker) 없음
-- 기본 원칙: 본인이 등록한 품목/송장만 수정/삭제 가능
+- 역할(role) 구분 있음: `users.role` = `'admin'` / `'user'` (마이그레이션 015, CHECK 제약).
+  구분은 `lib/auth-helper.ts`의 `requireAdmin()` / `requireUser()`로 한다.
+- **관리자 전용**: 별칭(item_aliases) 등록·삭제, 관리자 메모(admin_memo), 품목 신규·대량 등록.
+- **작업자(로그인 전원) 가능**: 검수 스캔, 현장 추가, 수동 챙김, 결품 완료, 검수 재개, 수동완료, 송장번호 변경.
+- 기본 원칙: 본인이 등록한 품목/송장만 수정/삭제 가능 (아래 is_auto_created 정책은 별개로 유지).
 
 ### 품목(items) 수정/삭제 권한
 협업 시나리오를 위해 `items.is_auto_created` 플래그로 정책을 분기:
@@ -85,6 +90,15 @@
   바코드/이미지 보완을 다른 작업자가 이어받을 수 있어야 해서 공용 수정 허용.
 - 직접 등록 = 새 품목 등록(모달)이나 대량 등록(엑셀/CSV)으로 만든 품목. 본인 소유로 격리.
 - 권한 체크는 미들웨어 + 페이지 + API 삼중 방어 원칙 그대로 유지.
+
+## 검수 시스템 작동 원리
+- **단일 입력 + 서버 판별**: 모든 스캔이 한 입력란 → `sendScan(바코드)` 하나로 서버에 전송. 서버가 바코드 종류를 판별해 응답 `type`을 주고, 클라이언트는 그 `type`대로 **화면만 그린다**. 판정 로직을 클라이언트에서 다시 짜지 말 것. 입력 출처(물리 스캐너 / 카메라 / URL `?code`)는 무관 — 바코드 문자열만 `sendScan`에 넘기면 동일하게 동작한다.
+- **스캔 흐름**: 송장 바코드→열림 / 품목 바코드→카운트 / 다 채우면 자동 완료 / 완료 후 다음 송장 찍으면 전환 / 미완료인데 다른 송장 찍으면 확인창.
+- **완료 상태 3종**(completed / completed_partial / manual_completed). 완료 판정은 `lib/invoice-status.ts`의 `isCompletedStatus()` 헬퍼로 통일 — 여기저기 나열하지 말고 이 헬퍼를 쓴다. 상태가 늘어도 헬퍼만 고친다.
+- **완료 규칙**: 완료 탭 송장(3종)은 새로 스캔하면 "이미 완료된 송장입니다"로 막힌다. 되돌리기는 상세의 재개 버튼으로만. (단, 이미 열려 스캔 중이던 송장의 연속 초과 스캔은 기존 자동재개 흐름 유지.)
+- **삭제는 soft delete(`deleted_at`)만** — 하드 삭제 없음. `invoice_no`는 UNIQUE라 삭제해도 번호가 안 풀린다(재업로드로 정정 불가).
+- **자식 테이블은 송장 id(정수)로 연결**: invoice_items, scan_logs, invoice_reopens 등 전부 송장의 `id`로 참조. `invoice_no`(문자열)로 참조하는 곳 없음 → 송장번호를 바꿔도 자식 데이터는 안 건드려도 된다.
+- **로직/화면 분리**: 검수 화면 로직은 `app/warehouse/scan/useScanSession.ts` 훅에 있고, `page.tsx`(뷰)가 소비한다.
 
 ## 페이지 구조
 | 경로 | 용도 | 비고 |
@@ -104,6 +118,8 @@
 - 출고 API: /api/warehouse/items/*, /api/warehouse/invoices/*, /api/warehouse/scan, /api/warehouse/history
 
 ## DB 스키마
+
+> ⚠️ 정확한 최신 스키마는 `migrations/` 폴더가 유일한 진실(source of truth). 아래는 큰 그림이며, 이후 마이그레이션이 반영 안 된 부분이 있을 수 있다.
 
 ### 공용 (인증/사용자)
 - users (id, username, password, nickname, created_at) — 인증·작업자 정보로 계속 사용
@@ -130,7 +146,7 @@ CREATE TABLE items (
 CREATE TABLE invoices (
   id SERIAL PRIMARY KEY,
   invoice_no VARCHAR(100) UNIQUE NOT NULL,
-  status VARCHAR(20) DEFAULT 'pending',
+  status VARCHAR(20) DEFAULT 'pending', -- pending / completed / completed_partial(결품 완료) / manual_completed(수동완료)
   completed_at TIMESTAMP,
   completed_by INTEGER REFERENCES users(id),
   created_by INTEGER REFERENCES users(id),
@@ -164,6 +180,14 @@ CREATE INDEX idx_invoice_items_invoice ON invoice_items(invoice_id);
 CREATE INDEX idx_scan_logs_invoice ON scan_logs(invoice_id);
 ```
 
+### 이후 추가된 주요 테이블 (이름·용도만 — 상세 구조는 migrations 참조)
+- item_aliases — 같은 취급 품명(별칭)
+- item_barcodes — 품목 다중 바코드
+- invoice_reopens — 송장 재개 이력
+- invoice_no_changes — 송장번호 변경 이력
+- upload_files / upload_batches — 업로드 원본 엑셀 보관
+- access_logs — 감사 로그
+
 ## 이미지 저장 방식
 **DB의 BYTEA 컬럼에 직접 저장** (Cloud Run/Cloud SQL 호환, 파일시스템 쓰기 불필요)
 - `items` 테이블에 `image_data BYTEA` + `image_mime VARCHAR(100)` 두 컬럼 사용
@@ -188,7 +212,7 @@ CREATE INDEX idx_scan_logs_invoice ON scan_logs(invoice_id);
 - Server Component 기본, 인터랙션 필요 시에만 "use client"
 - API는 NextResponse.json() 사용
 - 권한 체크: 미들웨어 + 페이지 + API 삼중 방어
-- params는 Promise (Next.js 15): const { id } = await params
+- params는 Promise (Next.js 16): const { id } = await params
 - DB의 id(number)와 session.user.id(string) 비교 시 String() 변환
 - 비밀번호는 bcrypt.hash로 해시 후 저장
 - 에러 메시지는 사용자 친화적 한국어로
@@ -205,8 +229,8 @@ CREATE INDEX idx_scan_logs_invoice ON scan_logs(invoice_id);
 
 3. **DB 스키마 변경은 절대 직접 실행 금지**
    - 항상 migrations/ 폴더에 SQL 파일로 만들어줄 것
-   - 실행 방법 (Neon SQL Editor) 명시할 것
-   - 사용자가 직접 Neon SQL Editor에서 실행
+   - 실행 방법 명시할 것 (로컬은 로컬 PostgreSQL, 실서버는 Cloud SQL)
+   - 사용자가 직접 실행 — 로컬은 로컬 PostgreSQL, 실서버는 Cloud SQL에서
 
 4. **큰 변경 전 계획 보고**
    - 어떤 파일을 만들/수정/삭제할지 먼저 보여줄 것
@@ -215,6 +239,21 @@ CREATE INDEX idx_scan_logs_invoice ON scan_logs(invoice_id);
 5. **새 npm 패키지 추가 시 사전 알림**
 
 6. **디버깅 console.log는 작업 끝나면 제거**
+
+7. **지시 범위 준수**
+   - 지시받은 것만 한다. 지시에 없는 개선·추가·리팩터·리네이밍을 임의로 하지 마라.
+   - "이왕 하는 김에"도 금지. 넣는 게 낫다고 판단되면 먼저 물어보고 승인받은 뒤에만 한다.
+
+8. **민감정보 보호**
+   - 비밀번호, DATABASE_URL·AUTH_SECRET 등 시크릿, 수령인 개인정보(이름·전화·주소)를 출력·로그·응답에 노출하지 마라.
+   - 조회 결과에 섞이면 마스킹(***)하거나 아예 가져오지 않는다. DB describe는 전체 말고 필드명만.
+
+9. **배포는 포그라운드로 끝까지 지켜본다**
+   - 백그라운드 금지(멈춘 적 있음). 배포 후 새 리비전명과 트래픽 100%를 확인한다.
+
+10. **로컬 먼저, 실서버는 나중**
+   - 코드·SQL은 로컬에서 먼저 확인하고 실서버 반영은 배포 시점에.
+   - 스크립트·SQL 실행 시 "지금 로컬이냐 실서버냐"를 매번 확인(.env.local=로컬 / .env.deploy.local=실서버).
 
 ## 파일 구조 컨벤션
 
