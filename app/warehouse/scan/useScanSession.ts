@@ -971,3 +971,6 @@ export function useScanSession() {
     handleManualPick,
   };
 }
+
+// useScanSession() 반환 객체 타입 — PC/모바일 뷰가 prop 타입으로 공유한다.
+export type ScanSession = ReturnType<typeof useScanSession>;
