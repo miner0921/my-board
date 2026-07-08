@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { CheckCircle2, AlertCircle, Circle, Hand, X } from "lucide-react";
 import { initAudio } from "@/lib/feedback";
 import {
@@ -7,6 +8,7 @@ import {
   type ItemPayload,
   type ScanSession,
 } from "./useScanSession";
+import CameraScanner from "./CameraScanner";
 import InvoiceNotice from "./InvoiceNotice";
 import WrongItemModal from "./WrongItemModal";
 import InvoiceChangeModal from "./InvoiceChangeModal";
@@ -52,6 +54,7 @@ export default function ScanMobileView({ session }: { session: ScanSession }) {
     setExcludeTarget,
     setMenuTarget,
     setCancelOpen,
+    sendScan,
     handleKeyDown,
     // 모달 상태 + 핸들러 (PC와 동일)
     wrongItem,
@@ -91,6 +94,23 @@ export default function ScanMobileView({ session }: { session: ScanSession }) {
         ? "bg-green-500"
         : "bg-zinc-300";
 
+  // 카메라 디코드 → 검수 스캔 연결. 카메라는 같은 바코드를 매 프레임 반복 디코드하므로
+  //   여기서 중복/오발 방지를 건다(물리 스캐너의 Enter 1회 + disabled 와 동일 효과).
+  //   sendScan 은 입력 출처 무관 — 문자열만 넘기면 물리 스캐너·URL ?code 와 동일 처리.
+  //   - 위험 모달 중(modalOpen) / 요청 중(loading) 무시
+  //   - 같은 값 쿨다운(1.8초) — 다른 값이면 즉시 처리(다른 품목 연속 스캔은 안 막음)
+  const lastScanRef = useRef<{ value: string; at: number } | null>(null);
+  const handleCameraDetected = (text: string) => {
+    const value = text.trim();
+    if (!value) return;
+    if (modalOpen || loading) return;
+    const now = Date.now();
+    const last = lastScanRef.current;
+    if (last && last.value === value && now - last.at < 1800) return;
+    lastScanRef.current = { value, at: now };
+    sendScan(value);
+  };
+
   return (
     // 방안 C: ScanMobileView 자체 스크롤 컨테이너.
     //   높이 = 100dvh - (모바일바 56 + 제목 header 71 + 콘텐츠 py-6 상단 24 + 하단 24) = 176px.
@@ -105,10 +125,10 @@ export default function ScanMobileView({ session }: { session: ScanSession }) {
           상단 고정. 스크롤해도 항상 보이며, 불투명 배경(bg-white) + z-index 로
           품목이 고정 영역 뒤로 비쳐 보이지 않게. */}
       <div className="sticky top-0 z-20 bg-white pt-0.5 pb-2">
-        {/* 1) 카메라 자리 — 빈 플레이스홀더 (다음 단계에서 실제 카메라) */}
-        <div className="mt-1 aspect-[2/1] w-full rounded-lg bg-zinc-100 border border-dashed border-zinc-300 flex flex-col items-center justify-center text-zinc-400">
-          <span className="text-sm font-medium">카메라</span>
-          <span className="text-xs mt-0.5">준비 중</span>
+        {/* 1) 카메라 — 후면 카메라로 바코드 스캔 → handleCameraDetected → sendScan.
+            중복/모달/요청 중 방지는 handleCameraDetected 에서 처리. */}
+        <div className="mt-1">
+          <CameraScanner onDetected={handleCameraDetected} />
         </div>
 
         {/* 2) 바코드 직접 입력칸 — 기존 입력 흐름(handleKeyDown → sendScan) 연결 */}
