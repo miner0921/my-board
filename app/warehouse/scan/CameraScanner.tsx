@@ -5,8 +5,10 @@ import { useEffect, useRef, useState } from "react";
 // ─────────────────────────────────────────────────────────────
 // 카메라 바코드 스캐너 — @zxing/browser 로 후면 카메라 영상에서 1D 바코드 디코드.
 //   - ★ 자동 시작하지 않는다. 사용자가 "탭하여 카메라 켜기"를 누르면 그 클릭
-//     핸들러 안에서 getUserMedia 를 호출한다(제스처 직후라 크롬이 허용).
-//   - 단계 분리: (A) getUserMedia 로 스트림 확보 → (B) zxing 이 그 스트림을 디코드.
+//     핸들러 안에서 어떤 await(zxing 동적 import 등)보다 "가장 먼저" getUserMedia 를
+//     호출한다(제스처 직후라 크롬이 허용). 스트림은 확보 즉시 video 에 물려
+//     영상이 바로 보이게 하고, 그 다음에 zxing 을 로드해 디코더를 붙인다.
+//   - 단계 분리: (A) getUserMedia 로 스트림 확보 + video 표시 → (B) zxing 이 그 스트림을 디코드.
 //     실패 시 단계(stage)와 error.name/message 를 그대로 표시(진단).
 //   - 후면 카메라는 exact 가 아니라 ideal(선호). 실패하면 제약 없이(video:true) 재시도.
 //   - 언마운트 시 디코딩 중단 + 스트림 트랙 stop(리소스 정리).
@@ -73,6 +75,13 @@ export default function CameraScanner({ onDetected }: Props) {
       }
       streamRef.current = stream;
 
+      // 스트림 확보 즉시 video 에 물려 영상을 바로 보여준다(zxing 로드를 기다리지 않음).
+      // decodeFromStream 도 내부에서 같은 스트림을 다시 붙이지만 무해하다.
+      stage = "attachVideo";
+      video.srcObject = stream;
+      // autoPlay 속성이 있지만 일부 브라우저는 명시적 play() 가 필요 — 실패는 무시(디코드에는 영향 없음).
+      await video.play().catch(() => {});
+
       // ── (B) zxing — 확보한 스트림을 디코드 ──
       stage = "zxing";
       const { BrowserMultiFormatReader } = await import("@zxing/browser");
@@ -112,6 +121,7 @@ export default function CameraScanner({ onDetected }: Props) {
       // 실패 시 오버레이(탭하여 재시도)를 다시 보이게 하고 잔여 스트림 정리.
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
+      if (videoRef.current) videoRef.current.srcObject = null;
       setStarted(false);
     }
   };
