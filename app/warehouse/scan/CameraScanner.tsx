@@ -45,8 +45,17 @@ export default function CameraScanner({ onDetected }: Props) {
     };
   }, []);
 
+  // [임시 계측] startCamera 호출 횟수 — 이중 실행 여부 확인용. 원인 확정 후 제거.
+  const callCountRef = useRef(0);
+
   // ★ 사용자 제스처(탭) 안에서 호출 — 제스처 직후 getUserMedia 라 크롬이 허용.
   const startCamera = async () => {
+    // [임시 계측] 진입 로그 — 2 이상이 찍히면 동시 이중 실행. 원인 확정 후 제거.
+    const callNo = ++callCountRef.current;
+    const t0 = performance.now();
+    const since = () => `${Math.round(performance.now() - t0)}ms`;
+    console.log(`[cam#${callNo}] startCamera 호출, started=${started}`);
+
     setErrorInfo(null);
     setStarted(true); // 오버레이 숨김 + video 표시(video 는 항상 렌더라 ref 는 이미 있음)
     let stage = "init";
@@ -65,13 +74,26 @@ export default function CameraScanner({ onDetected }: Props) {
 
       let stream: MediaStream;
       try {
+        // [임시 계측] 1차 요청 전후 타임스탬프 — 팝업 대기 시간 측정. 원인 확정 후 제거.
+        console.log(`[cam#${callNo}] 1차 getUserMedia 호출 @${since()}`);
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: "environment" } },
         });
-      } catch {
+        console.log(`[cam#${callNo}] 1차 성공 @${since()}`);
+      } catch (e1) {
+        // [임시 계측] 삼켜지던 1차 실패 이유를 드러낸다. 원인 확정 후 제거.
+        const err1 = e1 as Error;
+        console.error(
+          `[cam#${callNo}] 1차 실패 @${since()}:`,
+          err1?.name,
+          err1?.message
+        );
+
         // 후면 지정/제약이 원인일 수 있으니 제약 없이 재시도(아무 카메라나).
         stage = "getUserMedia(fallback video:true)";
+        console.log(`[cam#${callNo}] 폴백 getUserMedia 호출 @${since()}`);
         stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        console.log(`[cam#${callNo}] 폴백 성공 @${since()}`);
       }
       streamRef.current = stream;
 
@@ -112,7 +134,8 @@ export default function CameraScanner({ onDetected }: Props) {
       );
     } catch (e) {
       const err = e as { name?: string; message?: string };
-      console.error("카메라 시작 실패:", stage, e);
+      // [임시 계측] 경과시간(@…ms) 부분은 원인 확정 후 제거.
+      console.error(`카메라 시작 실패 [cam#${callNo}] @${since()}:`, stage, e);
       setErrorInfo({
         stage,
         name: err?.name ?? "Error",
