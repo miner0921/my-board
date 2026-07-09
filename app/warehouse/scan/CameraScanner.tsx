@@ -29,6 +29,17 @@ export default function CameraScanner({ onDetected }: Props) {
   const [started, setStarted] = useState(false);
   const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null);
 
+  // ─── [임시 계측] 폰 화면에서 원인 판정용. 원인 확정 후 이 블록 전부 제거. ───
+  // USB 원격 콘솔을 쓸 수 없어 진단 로그를 화면에 직접 렌더한다.
+  //   - ref 에 누적(비동기 중 최신값 보장) + state 로 렌더 트리거.
+  //   - 재시도해도 초기화하지 않는다 — cam#1, cam#2 가 함께 보여야 이중 실행이 드러남.
+  const diagRef = useRef<string[]>([]);
+  const [diag, setDiag] = useState<string[]>([]);
+  const pushDiag = (line: string) => {
+    diagRef.current = [...diagRef.current, line];
+    setDiag(diagRef.current);
+  };
+
   // onDetected 를 ref 로 잡아 항상 최신 콜백을 쓴다(렌더 중이 아니라 effect 에서 동기화).
   const onDetectedRef = useRef(onDetected);
   useEffect(() => {
@@ -54,7 +65,8 @@ export default function CameraScanner({ onDetected }: Props) {
     const callNo = ++callCountRef.current;
     const t0 = performance.now();
     const since = () => `${Math.round(performance.now() - t0)}ms`;
-    console.log(`[cam#${callNo}] startCamera 호출, started=${started}`);
+    const log = (line: string) => pushDiag(`#${callNo} ${line} @${since()}`);
+    log(`탭 → startCamera (started=${started})`);
 
     setErrorInfo(null);
     setStarted(true); // 오버레이 숨김 + video 표시(video 는 항상 렌더라 ref 는 이미 있음)
@@ -74,26 +86,22 @@ export default function CameraScanner({ onDetected }: Props) {
 
       let stream: MediaStream;
       try {
-        // [임시 계측] 1차 요청 전후 타임스탬프 — 팝업 대기 시간 측정. 원인 확정 후 제거.
-        console.log(`[cam#${callNo}] 1차 getUserMedia 호출 @${since()}`);
+        // [임시 계측] 1차 요청 전후 시각 — 팝업 대기 시간 측정. 원인 확정 후 제거.
+        log("1차 gUM(후면) 호출");
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: "environment" } },
         });
-        console.log(`[cam#${callNo}] 1차 성공 @${since()}`);
+        log("1차 성공");
       } catch (e1) {
         // [임시 계측] 삼켜지던 1차 실패 이유를 드러낸다. 원인 확정 후 제거.
         const err1 = e1 as Error;
-        console.error(
-          `[cam#${callNo}] 1차 실패 @${since()}:`,
-          err1?.name,
-          err1?.message
-        );
+        log(`1차 실패 ${err1?.name}: ${err1?.message}`);
 
         // 후면 지정/제약이 원인일 수 있으니 제약 없이 재시도(아무 카메라나).
         stage = "getUserMedia(fallback video:true)";
-        console.log(`[cam#${callNo}] 폴백 getUserMedia 호출 @${since()}`);
+        log("폴백 gUM(video:true) 호출");
         stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        console.log(`[cam#${callNo}] 폴백 성공 @${since()}`);
+        log("폴백 성공");
       }
       streamRef.current = stream;
 
@@ -103,6 +111,7 @@ export default function CameraScanner({ onDetected }: Props) {
       video.srcObject = stream;
       // autoPlay 속성이 있지만 일부 브라우저는 명시적 play() 가 필요 — 실패는 무시(디코드에는 영향 없음).
       await video.play().catch(() => {});
+      log("video 연결 완료"); // [임시 계측] 원인 확정 후 제거
 
       // ── (B) zxing — 확보한 스트림을 디코드 ──
       stage = "zxing";
@@ -132,10 +141,11 @@ export default function CameraScanner({ onDetected }: Props) {
           if (result) onDetectedRef.current(result.getText());
         }
       );
+      log("zxing 디코드 시작 — 정상 동작"); // [임시 계측] 원인 확정 후 제거
     } catch (e) {
       const err = e as { name?: string; message?: string };
-      // [임시 계측] 경과시간(@…ms) 부분은 원인 확정 후 제거.
-      console.error(`카메라 시작 실패 [cam#${callNo}] @${since()}:`, stage, e);
+      // [임시 계측] 최종 실패 시각/단계. 원인 확정 후 제거.
+      log(`최종 실패 [${stage}] ${err?.name}: ${err?.message}`);
       setErrorInfo({
         stage,
         name: err?.name ?? "Error",
@@ -150,6 +160,7 @@ export default function CameraScanner({ onDetected }: Props) {
   };
 
   return (
+    <>
     <div className="relative aspect-[2/1] w-full rounded-lg overflow-hidden bg-black">
       <video
         ref={videoRef}
@@ -183,5 +194,15 @@ export default function CameraScanner({ onDetected }: Props) {
         </button>
       )}
     </div>
+
+    {/* ─── [임시 계측] 진단 로그 — USB 없이 폰 화면으로 원인 판정. 확정 후 제거. ───
+        실패해 오버레이가 돌아온 상태(!started)에서만 노출. 재시도해도 누적되므로
+        cam#1·#2 가 함께 보이면 이중 실행이다. */}
+    {!started && diag.length > 0 && (
+      <pre className="mt-2 max-h-48 overflow-auto rounded bg-zinc-900 p-2 text-[10px] leading-snug text-zinc-100 whitespace-pre-wrap break-all">
+        {diag.join("\n")}
+      </pre>
+    )}
+    </>
   );
 }
