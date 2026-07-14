@@ -1,8 +1,11 @@
 import type { NextConfig } from "next";
 
 // Phase 2.5 보안 헤더 (모든 경로에 적용)
-// camera 외 나머지는 전 경로 동일. Permissions-Policy 의 camera 부분만 경로별로
-// 분기한다 — 검수 스캔 페이지에서만 같은 출처(self) 카메라 허용, 그 외는 전면 차단.
+// Permissions-Policy 는 전 경로 동일하게 적용한다 — camera 는 같은 출처(self)만 허용,
+// mic·geo 는 전면 차단. (과거엔 /warehouse/scan 만 camera=(self), 그 외 camera=() 로
+// 경로 분기했으나, 대시보드 등 다른 경로로 먼저 로드된 뒤 SPA 내비게이션으로 스캔에
+// 진입하면 최초 문서의 camera=() 정책이 유지되어 카메라가 정책 레벨에서 차단됐다.
+// 문서를 새로 받지 않는 클라이언트 전환에서도 카메라가 열리도록 전 경로 self 로 통일.)
 const commonSecurityHeaders = [
   // 다른 사이트가 iframe 으로 우리 페이지를 못 띄우게 함 (클릭재킹 방어)
   { key: "X-Frame-Options", value: "DENY" },
@@ -17,9 +20,9 @@ const commonSecurityHeaders = [
   },
 ];
 
-// 권한 정책: 쓰지 않는 장치/센서는 차단. camera 만 경로별로 다름(mic·geo 는 항상 차단).
-const PERMISSIONS_POLICY_BLOCKED = "camera=(), microphone=(), geolocation=()";
-const PERMISSIONS_POLICY_SCAN = "camera=(self), microphone=(), geolocation=()";
+// 권한 정책: 쓰지 않는 장치/센서는 차단. camera 는 같은 출처(self)만 허용(전 경로 동일),
+// mic·geo 는 항상 전면 차단. self 는 우리 오리진만 허용하고 제3자(*)는 여전히 불허.
+const PERMISSIONS_POLICY = "camera=(self), microphone=(), geolocation=()";
 
 const nextConfig: NextConfig = {
   // Cloud Run 배포용: standalone 빌드로 최소 실행 이미지 생성
@@ -27,20 +30,11 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // 검수 스캔 페이지에서만 같은 출처 카메라 허용. 일반 규칙보다 먼저 두고,
-        // 아래 일반 규칙은 이 경로를 제외(negative lookahead)해 겹치지 않게 한다.
-        source: "/warehouse/scan",
+        // 전 경로 동일 적용 — 어떤 문서로 진입하든 카메라 정책이 self 라 SPA 전환에서도 열림.
+        source: "/(.*)",
         headers: [
           ...commonSecurityHeaders,
-          { key: "Permissions-Policy", value: PERMISSIONS_POLICY_SCAN },
-        ],
-      },
-      {
-        // 그 외 모든 경로 — 카메라 전면 차단 유지. (/warehouse/scan 은 제외)
-        source: "/((?!warehouse/scan).*)",
-        headers: [
-          ...commonSecurityHeaders,
-          { key: "Permissions-Policy", value: PERMISSIONS_POLICY_BLOCKED },
+          { key: "Permissions-Policy", value: PERMISSIONS_POLICY },
         ],
       },
     ];
