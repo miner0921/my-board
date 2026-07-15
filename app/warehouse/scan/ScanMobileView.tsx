@@ -48,6 +48,7 @@ export default function ScanMobileView({ session }: { session: ScanSession }) {
     completedItems,
     exemptItems,
     lastScannedId,
+    flash,
     setAddModalOpen,
     setPartialOpen,
     setManualTarget,
@@ -128,7 +129,7 @@ export default function ScanMobileView({ session }: { session: ScanSession }) {
         {/* 1) 카메라 — 후면 카메라로 바코드 스캔 → handleCameraDetected → sendScan.
             중복/모달/요청 중 방지는 handleCameraDetected 에서 처리. */}
         <div className="mt-1">
-          <CameraScanner onDetected={handleCameraDetected} />
+          <CameraScanner onDetected={handleCameraDetected} flash={flash} />
         </div>
 
         {/* 2) 바코드 직접 입력칸 — 기존 입력 흐름(handleKeyDown → sendScan) 연결 */}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { type FlashKind } from "./useScanSession";
 
 // ─────────────────────────────────────────────────────────────
 // 카메라 바코드 스캐너 — @zxing/browser 로 후면 카메라 영상에서 1D 바코드 디코드.
@@ -24,6 +25,9 @@ import { useEffect, useRef, useState } from "react";
 
 type Props = {
   onDetected: (text: string) => void;
+  // 스캔 성공/완료 시 프리뷰에 초록 테두리를 짧게 띄우기 위한 신호.
+  // 세션의 flash 상태를 그대로 받는다(사라짐은 세션 타이머에 맡김).
+  flash: FlashKind;
 };
 
 type ErrorInfo = { stage: string; name: string; message: string };
@@ -31,7 +35,7 @@ type ErrorInfo = { stage: string; name: string; message: string };
 // 브라우저 카메라 권한 상태. query 미지원이면 "prompt" 로 취급한다.
 type PermState = "granted" | "prompt" | "denied";
 
-export default function CameraScanner({ onDetected }: Props) {
+export default function CameraScanner({ onDetected, flash }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const controlsRef = useRef<{ stop: () => void } | null>(null);
@@ -216,6 +220,11 @@ export default function CameraScanner({ onDetected }: Props) {
         muted
         autoPlay
       />
+      {/* 스캔 성공/완료 시 초록 테두리 — 탭 방해 금지(pointer-events-none),
+          사라짐은 세션의 기존 350ms flash 타이머에 맡긴다(여기서 타이머 안 만듦). */}
+      {(flash === "ok" || flash === "complete") && (
+        <div className="pointer-events-none absolute inset-0 rounded-lg ring-4 ring-green-400" />
+      )}
       {!started &&
         (isDenied ? (
           // 영구 거부 — 눌러도 팝업이 뜨지 않는다. 버튼 대신 해제 방법을 안내.
@@ -261,7 +270,16 @@ export default function CameraScanner({ onDetected }: Props) {
                 </span>
               </>
             ) : (
-              <span className="text-sm font-medium">탭하여 카메라 켜기</span>
+              // 최초 진입 — 권한 요청 전. 탭 대상임이 한눈에 보이도록 CTA 로 강조하고,
+              // 탭하면 권한 창이 뜬다는 걸 보조 문구로 예고한다.
+              <>
+                <span className="rounded-lg bg-zinc-700 px-6 py-3 text-base font-semibold text-white shadow-sm">
+                  탭하여 스캔 시작
+                </span>
+                <span className="mt-1.5 text-xs text-zinc-500">
+                  카메라 권한 창이 뜨면 &apos;허용&apos;을 눌러 주세요
+                </span>
+              </>
             )}
           </button>
         ))}
