@@ -45,3 +45,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 로컬 전용 문서/스크립트
+docs/
+migrations/040_reset_all_data.sql
+migrations/backup_split_fix_20260702.sql
