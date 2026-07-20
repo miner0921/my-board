@@ -4,6 +4,36 @@
 메인 페이지(/)는 출고 대시보드(/warehouse)로 리다이렉트된다.
 (과거 함께 있던 게시판 기능은 제거됨 — posts/comments 코드 삭제 완료.)
 
+## ⚠️ 재고 시스템 이관 진행 중 (과도기) — 먼저 읽을 것
+
+**지금 이 저장소는 "DB는 새 구조 / 코드는 옛 구조"인 과도기 상태다.** 아래를 모르고 작업하면 반드시 헷갈린다.
+
+### DB 이관 완료 — **로컬 warehouse DB만**
+마이그레이션 **045~050 적용됨 (048 제외)**:
+
+| 파일 | 내용 | 상태 |
+|---|---|---|
+| 045 | 신규 14테이블 생성 (조직/품목/재고/입고/조정/출고/송장이력) | ✅ 적용 |
+| 046 | 3계층 조직 초기행(tpls 1 / suppliers 1) + users 스코프 컬럼 | ✅ 적용 |
+| 047 | items 활성 508행 → **variants 복사(id 보존)** + 옵션 파싱 + 별칭 181행 | ✅ 적용 |
+| 048 | `item_id` → `variant_id` 개명, FK를 variants로 교체 | ⏸ **보류** |
+| 049 | `invoices.supplier_id` 추가 + 전 1032행 MANWOL로 채움 | ✅ 적용 |
+| 050 | UNIQUE 제약 부착 (variants 2건 + stock_movements + stock_lots) | ✅ 적용 |
+
+- **id 보존이 절대 원칙**: `items.id === variants.id`. `invoice_items.item_id`가 이 id를 가리키므로 어긋나면 기존 송장 매핑이 전부 깨진다.
+- 조직: `tpls`(SSLOGIS/더블에스로지스) → `suppliers`(MANWOL/만월회). 지금은 단일 업체라 기존 데이터 전부가 MANWOL.
+
+### 코드는 아직 옛 구조를 읽는다
+- **048이 보류 중**이라 `invoice_items` / `item_barcodes` / `item_aliases`의 컬럼명은 **여전히 `item_id`**다. 앱 코드도 `item_id`를 그대로 쓴다 — **이건 버그가 아니라 현재 정상 상태다. 지우거나 "고치지" 말 것.**
+- 앱의 모든 조회는 아직 **`items` 테이블 기준**으로 동작한다. `variants`는 채워져만 있고 코드가 읽지 않는다.
+- 048을 돌리면 SQL에서 `item_id`를 쓰는 서버 코드(약 14개 파일)가 전부 깨진다. **코드 수정과 반드시 함께** 진행해야 한다.
+- ⚠️ `scan_logs.item_id`는 개명 대상이 아니다(계속 `items`를 참조). `scan/route.ts` 한 파일에 두 종류가 섞여 있으니 **일괄 치환 금지**.
+
+### 반영 범위
+- **실서버(Cloud SQL) 미반영.** 로컬에서만 적용했다.
+- 브랜치: `feat/inventory`.
+- 🚫 **배포 금지** — 코드 수정 단계가 끝나고 사용자가 명시적으로 지시할 때까지.
+
 ## 기술 스택
 - Next.js 16.2.6 (App Router)
 - PostgreSQL (로컬 개발 + Cloud SQL, PostgreSQL 18 서울)
@@ -36,6 +66,11 @@
 
 ## 품목 매칭 규칙 (정규화 품명 = 단일 키) ⭐
 출고/검수 전체에서 "같은 품목"을 가르는 기준은 **정규화 품명 하나**다. 품목코드·구분·종류·바코드는 품목의 *속성*일 뿐 매칭 키가 아니다.
+
+> 🔄 **이관 상태**: 이 절의 내용은 **지금 그대로 유효하다** — `lib/resolve-item.ts`는 `items` 기준으로 동작한다.
+> 코드 수정 단계에서 `variants` 기반(`variants.match_name` + `supplier_id` 스코프)으로 개편 예정이다.
+> 047이 `variants.match_name`을 이미 채워뒀지만(옵션이 품명 뒤로 붙은 형태 — 예: `(1kg)우베` → `우베1kg`),
+> **아직 어떤 코드도 이 값을 읽지 않는다.** 옛 품명으로 와도 매칭되도록 047이 별칭 181건을 함께 넣어뒀다.
 
 - **매칭 키 = `itemMatchKey(name)` (`lib/resolve-item.ts`)** = `normalizeProductName(name)`.
   - 모든 조회(송장 confirm·preview, 대량등록 confirm·preview)는 `buildItemIndex(items)`(정규화 품명→id)를 거친다. 인라인으로 맵을 다시 만들지 말 것.
@@ -91,6 +126,14 @@
 - 직접 등록 = 새 품목 등록(모달)이나 대량 등록(엑셀/CSV)으로 만든 품목. 본인 소유로 격리.
 - 권한 체크는 미들웨어 + 페이지 + API 삼중 방어 원칙 그대로 유지.
 
+### 🔄 이관 상태 — role은 아직 admin/user 그대로
+- **`users.role`은 여전히 `'admin'` / `'user'` 2값이다.** 015의 CHECK 제약도 그대로. 위에 적힌 권한 규칙은 **전부 지금도 유효**하다.
+- `superadmin` / `tpl` / `supplier`로의 role 정리는 **코드 수정 단계 예정**. 046에서 role UPDATE를 의도적으로 뺐다 — 현재 코드가 role을 `=== 'admin'`으로만 판정해서(`lib/auth-helper.ts` `requireAdmin()`, `proxy.ts`, `types/next-auth.d.ts`) 값을 바꾸면 관리자가 즉시 권한을 잃기 때문.
+- **스코프 컬럼은 이미 추가됨** (046): `users.tpl_id` / `users.supplier_id` / `users.user_code`.
+  - 배치: `admin` → 둘 다 NULL(전체 조회) / `sslogis`·`test` → `tpl_id`=SSLOGIS, `user_code`=`SSLOGIS-01`·`-02`.
+  - **스코프 판단은 role 이름이 아니라 `tpl_id`/`supplier_id` 컬럼으로 한다.** (둘 다 NULL=전체 / tpl_id만=해당 3PL 산하 / supplier_id만=해당 업체)
+  - 아직 어떤 코드도 이 컬럼들을 읽지 않는다. 원칙: **스코프는 지금, 권한은 나중.**
+
 ## 검수 시스템 작동 원리
 - **단일 입력 + 서버 판별**: 모든 스캔이 한 입력란 → `sendScan(바코드)` 하나로 서버에 전송. 서버가 바코드 종류를 판별해 응답 `type`을 주고, 클라이언트는 그 `type`대로 **화면만 그린다**. 판정 로직을 클라이언트에서 다시 짜지 말 것. 입력 출처(물리 스캐너 / 카메라 / URL `?code`)는 무관 — 바코드 문자열만 `sendScan`에 넘기면 동일하게 동작한다.
 - **스캔 흐름**: 송장 바코드→열림 / 품목 바코드→카운트 / 다 채우면 자동 완료 / 완료 후 다음 송장 찍으면 전환 / 미완료인데 다른 송장 찍으면 확인창.
@@ -129,8 +172,12 @@
 
 ### 신규 (출고 시스템용)
 
+> 🔄 **이관 상태**: 아래 `items` 정의는 **여전히 코드가 읽는 테이블**이라 그대로 둔다.
+> 047에서 활성 508행이 `variants`로 **id 보존 복사**되었지만, 코드는 아직 `items`를 읽는다.
+> `invoice_items.item_id` 컬럼명도 048 보류로 그대로다.
+
 ```sql
--- 품목 마스터
+-- 품목 마스터 (코드가 현재 읽는 테이블. variants로 복사 완료 — id 보존)
 CREATE TABLE items (
   id SERIAL PRIMARY KEY,
   barcode VARCHAR(100) UNIQUE NOT NULL,
@@ -187,6 +234,29 @@ CREATE INDEX idx_scan_logs_invoice ON scan_logs(invoice_id);
 - invoice_no_changes — 송장번호 변경 이력
 - upload_files / upload_batches — 업로드 원본 엑셀 보관
 - access_logs — 감사 로그
+
+### 신규 재고 시스템 테이블 14개 (045에서 생성 — 코드는 아직 사용 안 함)
+
+> 재고 테이블(stock_*, receipt*, *adjustment*, *outbound*)은 **전부 비어 있다.** 기능 구현 전이다.
+
+| 테이블 | 용도 | 현재 행수 |
+|---|---|---|
+| `tpls` | 3PL(물류대행사) | 1 (SSLOGIS/더블에스로지스) |
+| `suppliers` | 업체(화주). `tpl_id`로 3PL 소속 | 1 (MANWOL/만월회) |
+| `categories` | 업체별 카테고리. `UNIQUE(supplier_id, name)` | 0 |
+| `products` | 품목(상품). 이미지 BYTEA, `track_expiry`/`track_stock` | 0 |
+| `variants` | **옵션 단위(SKU)**. `match_name`이 검수 매칭 키. `product_id`는 전부 NULL(나중에 사람이 묶음) | **508** |
+| `stock_lots` | 로트(유통기한/제조일 단위) | 0 |
+| `stock_movements` | 재고 증감 원장(append-only) | 0 |
+| `receipts` / `receipt_lines` | 입고 헤더 / 라인 | 0 |
+| `stock_adjustments` / `adjustment_lines` | 실사 재고 조정 헤더 / 라인 | 0 |
+| `stock_outbounds` / `outbound_lines` | 재고 차감 출고(폐기·샘플 등) 헤더 / 라인 | 0 |
+| `invoice_state_changes` | 송장 상태 변경 이력 | 0 |
+
+**`variants` 주요 컬럼**: `id`(items.id 보존) · `supplier_id` · `sku_code`(유일한 product_code만 승계, 68행 NULL) · `opt1_value`(파싱된 옵션, 181행) · `match_name`(매칭 키) · `deleted_at`
+
+**050이 부착한 제약**: `variants UNIQUE(supplier_id, match_name)` / `variants UNIQUE(supplier_id, sku_code)` / `stock_movements UNIQUE(ref_type, ref_id, seq)` / `stock_lots` COALESCE 유니크 인덱스.
+`item_barcodes UNIQUE(supplier_id, barcode)`는 **의도적으로 걸지 않았다** — 같은 바코드가 여러 variant에 붙는 것이 정상 정책이기 때문(제조사 바코드 공유, 낱개/1팩 등).
 
 ## 이미지 저장 방식
 **DB의 BYTEA 컬럼에 직접 저장** (Cloud Run/Cloud SQL 호환, 파일시스템 쓰기 불필요)
