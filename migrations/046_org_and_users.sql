@@ -7,7 +7,7 @@
 --
 -- 하는 일:
 --   1) tpls 초기행 1건    — 더블에스로지스(SSLOGIS)
---   2) suppliers 초기행 1건 — 만월회(MANWOL), 소속 3PL = 더블에스로지스
+--   2) suppliers 초기행 1건 — 만월상회(MANWOL), 소속 3PL = 더블에스로지스
 --   3) users 에 스코프 컬럼 3개 추가 (tpl_id / supplier_id / user_code)
 --   4) 기존 users 3행에 스코프 값 배치
 --
@@ -29,7 +29,7 @@
 --   · 앞으로 생성되는 3PL/업체 코드는 난수 발급이 원칙이지만,
 --     기존 계정·기존 업체인 이 2건만 예외로 고정 코드('SSLOGIS'/'MANWOL')를 쓴다.
 --
--- 만월회 '업체 계정'(업체 소속 유저)은 이 파일에서 만들지 않는다.
+-- 만월상회 '업체 계정'(업체 소속 유저)은 이 파일에서 만들지 않는다.
 --   · 업체 계정은 나중에 3PL이 직접 발급한다.
 --   · 지금 필요한 건 suppliers 행 하나뿐 — 기존 508개 item 이 이 supplier_id 를
 --     가리켜야 하므로(이관은 별도 파일에서).
@@ -48,10 +48,10 @@ SELECT 'SSLOGIS', '더블에스로지스', TRUE
 WHERE NOT EXISTS (SELECT 1 FROM tpls WHERE code = 'SSLOGIS');
 
 -- -----------------------------------------------------
--- 2) 업체 초기행 — 만월회 (소속 3PL = 더블에스로지스)
+-- 2) 업체 초기행 — 만월상회 (소속 3PL = 더블에스로지스)
 -- -----------------------------------------------------
 INSERT INTO suppliers (tpl_id, code, name, is_active)
-SELECT (SELECT id FROM tpls WHERE code = 'SSLOGIS'), 'MANWOL', '만월회', TRUE
+SELECT (SELECT id FROM tpls WHERE code = 'SSLOGIS'), 'MANWOL', '만월상회', TRUE
 WHERE NOT EXISTS (SELECT 1 FROM suppliers WHERE code = 'MANWOL');
 
 -- -----------------------------------------------------
@@ -98,7 +98,7 @@ COMMIT;
 --
 --   SELECT s.id, s.code, s.name, t.code AS tpl_code
 --     FROM suppliers s LEFT JOIN tpls t ON t.id = s.tpl_id;
---     -- 1행: MANWOL / 만월회 / SSLOGIS
+--     -- 1행: MANWOL / 만월상회 / SSLOGIS
 --
 --   SELECT id, username, role, tpl_id, supplier_id, user_code
 --     FROM users ORDER BY id;
