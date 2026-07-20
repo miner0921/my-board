@@ -50,3 +50,6 @@ next-env.d.ts
 docs/
 migrations/040_reset_all_data.sql
 migrations/backup_split_fix_20260702.sql
+
+# 실서버 데이터 로컬 복제용 (덤프 파일, 프록시 실행파일)
+/_localdump/
