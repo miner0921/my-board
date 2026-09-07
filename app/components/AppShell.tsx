@@ -68,7 +68,7 @@ export default function AppShell({
   const title = titleOverride ?? resolved.title;
 
   return (
-    <div className="min-h-screen bg-white md:flex">
+    <div className="min-h-screen bg-white md:flex md:h-screen md:overflow-hidden">
       {/* 모바일 상단 바 */}
       <div className="md:hidden flex items-center gap-3 border-b border-zinc-200 px-4 h-14 sticky top-0 bg-white z-20">
         <button
@@ -108,10 +108,10 @@ export default function AppShell({
         <Sidebar user={user} onNavigate={() => setMobileOpen(false)} />
       </aside>
 
-      {/* 메인 영역 */}
-      <div className="flex-1 min-w-0">
+      {/* 메인 영역 — md+ 에서는 헤더 고정 + 본문만 스크롤 */}
+      <div className="flex-1 min-w-0 md:flex md:flex-col md:min-h-0">
         {/* 상단 제목 헤더 */}
-        <header className="border-b border-zinc-100 px-5 sm:px-8 py-5">
+        <header className="border-b border-zinc-100 px-5 sm:px-8 py-5 md:shrink-0">
           {crumb && (
             <p className="text-xs text-zinc-500">{crumb}</p>
           )}
@@ -122,7 +122,9 @@ export default function AppShell({
           )}
         </header>
 
-        <div className="px-5 sm:px-8 py-6">{children}</div>
+        <div className="px-5 sm:px-8 py-6 md:flex-1 md:min-h-0 md:overflow-auto">
+          {children}
+        </div>
       </div>
     </div>
   );

@@ -4,8 +4,9 @@ import { useState } from "react";
 
 // 재고 화면 분할 뷰.
 //   왼쪽 = 품목별 전체 재고 / 오른쪽 = 선택한 품목의 소비기한별 로트.
-//   넓은 화면(lg~)에서는 페이지 자체는 스크롤하지 않고 좌·우 박스가 각자 스크롤한다.
-//   높이의 16rem 은 셸 헤더 + 상단 버튼줄 + 검색 폼이 차지하는 몫(대략치 — 필요하면 여기만 조절).
+//   넓은 화면(md~)에서는 페이지가 화면 높이에 딱 맞고 좌·우 박스만 각자 스크롤한다.
+//   높이는 계산값이 아니라 부모(페이지)가 준 높이를 그대로 채우는 방식이다 — AppShell 이
+//   md+ 에서 본문 영역 높이를 고정해 주므로 여기선 h-full / max-h-full 만 쓰면 된다.
 // 로트 정렬은 서버 쿼리가 이미 선입선출(소비기한→입고일) 순으로 맞춰 보낸다.
 // 화면에서 다시 정렬하지 말 것.
 
@@ -44,9 +45,9 @@ export default function StockSplit({
   const th = "px-3 py-2 text-left font-medium";
 
   return (
-    <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start">
+    <div className="grid gap-3 items-start md:h-full md:min-h-0 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
       {/* 왼쪽: 품목별 전체 재고 */}
-      <div className="overflow-auto border border-zinc-200 rounded-lg bg-white lg:max-h-[calc(100vh-16rem)]">
+      <div className="overflow-auto border border-zinc-200 rounded-lg bg-white md:max-h-full">
         <table className="w-full text-sm">
           <thead className="bg-zinc-50 text-xs text-zinc-500 sticky top-0 z-10">
             <tr>
@@ -87,7 +88,7 @@ export default function StockSplit({
       </div>
 
       {/* 오른쪽: 선택한 품목의 소비기한별 재고 */}
-      <div className="border border-zinc-200 rounded-lg bg-white overflow-auto lg:sticky lg:top-4 lg:max-h-[calc(100vh-16rem)]">
+      <div className="border border-zinc-200 rounded-lg bg-white overflow-auto md:max-h-full">
         {selected === null ? (
           <p className="px-3 py-10 text-center text-sm text-zinc-400">
             품목을 선택하세요.

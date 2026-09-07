@@ -10,7 +10,9 @@ import StockSplit, { type StockRow, type Lot } from "./StockSplit";
 // 재고 현황 — 품목별 총재고 + 로트(소비기한·입고일별) 상세.
 //   로트가 차감되는 순서대로 그대로 보여준다(위에 있는 로트가 먼저 나간다).
 
-const PAGE_SIZE = 20;
+// 페이지 넘기기 없이 목록 박스 스크롤로만 본다. 한 번에 가져올 최대 줄 수(안전장치).
+// 넘치면 검색으로 좁히라고 안내한다.
+const MAX_ROWS = 1000;
 
 // 소비기한 임박 기준(일). 이 안쪽이면 목록에서 강조된다.
 const SOON_DAYS = 30;
@@ -18,7 +20,6 @@ const SOON_DAYS = 30;
 type PageProps = {
   searchParams: Promise<{
     q?: string;
-    page?: string;
     zero?: string; // 1 = 재고 0인 품목도 표시
     soon?: string; // 1 = 소비기한 임박만
   }>;
@@ -33,7 +34,6 @@ export default async function StockPage({ searchParams }: PageProps) {
   const q = (sp.q ?? "").trim();
   const showZero = sp.zero === "1";
   const soonOnly = sp.soon === "1";
-  const page = Math.max(1, Number(sp.page) || 1);
 
   const params: unknown[] = [];
   const where: string[] = ["i.deleted_at IS NULL"];
@@ -67,8 +67,6 @@ export default async function StockPage({ searchParams }: PageProps) {
     params
   );
   const total = countRes.rows[0]?.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const offset = (Math.min(page, totalPages) - 1) * PAGE_SIZE;
 
   const rowsRes = await query(
     `SELECT i.id, i.name, i.barcode, i.expiry_managed,
@@ -76,7 +74,7 @@ export default async function StockPage({ searchParams }: PageProps) {
             MIN(l.expiry_date) FILTER (WHERE l.quantity > 0)::text AS nearest_expiry
      ${baseSql}
      ORDER BY i.name ASC, i.id ASC
-     LIMIT ${PAGE_SIZE} OFFSET ${offset}`,
+     LIMIT ${MAX_ROWS}`,
     params
   );
   const rows = rowsRes.rows as StockRow[];
@@ -112,18 +110,10 @@ export default async function StockPage({ searchParams }: PageProps) {
   if (q) baseParams.set("q", q);
   if (showZero) baseParams.set("zero", "1");
   if (soonOnly) baseParams.set("soon", "1");
-  const pageHref = (p: number) => {
-    const s = new URLSearchParams(baseParams);
-    if (p > 1) s.set("page", String(p));
-    const str = s.toString();
-    return `/warehouse/stock${str ? `?${str}` : ""}`;
-  };
-
   const toggleHref = (key: "zero" | "soon") => {
     const s = new URLSearchParams(baseParams);
     if (s.get(key) === "1") s.delete(key);
     else s.set(key, "1");
-    s.delete("page");
     const str = s.toString();
     return `/warehouse/stock${str ? `?${str}` : ""}`;
   };
@@ -132,13 +122,9 @@ export default async function StockPage({ searchParams }: PageProps) {
     "inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm border border-zinc-300 rounded-lg hover:bg-zinc-50 transition";
 
   return (
-    <div className="max-w-6xl">
+    <div className="max-w-6xl md:h-full md:flex md:flex-col md:min-h-0">
       {/* 상단 버튼 줄 */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Link href="/warehouse/stock/receipts" className={linkBtn}>
-          <ClipboardList size={16} strokeWidth={1.75} />
-          입고증
-        </Link>
+      <div className="mb-3 flex flex-wrap items-center gap-2 shrink-0">
         <Link href="/warehouse/stock/history" className={linkBtn}>
           <History size={16} strokeWidth={1.75} />
           입출고 내역
@@ -152,6 +138,10 @@ export default async function StockPage({ searchParams }: PageProps) {
           )}
         </Link>
         <div className="ml-auto flex items-center gap-2">
+          <Link href="/warehouse/stock/receipts" className={linkBtn}>
+            <ClipboardList size={16} strokeWidth={1.75} />
+            입고증
+          </Link>
           {isAdmin && (
             <>
               <StockMoveButton mode="in" />
@@ -164,7 +154,7 @@ export default async function StockPage({ searchParams }: PageProps) {
 
       {/* 승인 대기 알림 — 재고 숫자가 아직 안 맞을 수 있다는 신호 */}
       {pendingAdjust > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 px-3 py-2 rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-900">
+        <div className="mb-3 shrink-0 flex flex-wrap items-center gap-2 px-3 py-2 rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-900">
           <AlertTriangle size={16} strokeWidth={1.75} className="shrink-0" />
           <span>
             승인 대기 중인 재고 조정이 {pendingAdjust}건 있습니다. 승인 전까지는
@@ -180,77 +170,69 @@ export default async function StockPage({ searchParams }: PageProps) {
       )}
 
       {/* 검색 + 필터 */}
-      <form action="/warehouse/stock" method="get" className="mb-4 space-y-2">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            name="q"
-            defaultValue={q}
-            placeholder="품목명·바코드로 검색"
-            className="flex-1 min-w-[200px] px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
-          />
-          {showZero && <input type="hidden" name="zero" value="1" />}
-          {soonOnly && <input type="hidden" name="soon" value="1" />}
-          <button
-            type="submit"
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white hover:opacity-90 transition bg-[#042C53]"
-          >
-            <Search size={16} strokeWidth={2} />
-            검색
-          </button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href={toggleHref("soon")}
-            className={`px-3 py-1.5 rounded-lg text-sm border transition ${
-              soonOnly
-                ? "bg-amber-50 border-amber-300 text-amber-900"
-                : "border-zinc-300 text-zinc-700 hover:bg-zinc-50"
-            }`}
-          >
-            소비기한 {SOON_DAYS}일 이내
-          </Link>
-          <Link
-            href={toggleHref("zero")}
-            className={`px-3 py-1.5 rounded-lg text-sm border transition ${
-              showZero
-                ? "bg-zinc-100 border-zinc-400 text-zinc-900"
-                : "border-zinc-300 text-zinc-700 hover:bg-zinc-50"
-            }`}
-          >
-            재고 0 포함
-          </Link>
-          <span className="ml-auto text-sm text-zinc-500">총 {total}개 품목</span>
-        </div>
+      {/* 검색 + 필터 (한 줄) */}
+      <form
+        action="/warehouse/stock"
+        method="get"
+        className="mb-3 flex flex-wrap items-center gap-2 shrink-0"
+      >
+        <input
+          type="text"
+          name="q"
+          defaultValue={q}
+          placeholder="품목명·바코드 검색"
+          className="w-[26rem] sm:w-[32rem] px-3 py-2 text-sm border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
+        />
+        {showZero && <input type="hidden" name="zero" value="1" />}
+        {soonOnly && <input type="hidden" name="soon" value="1" />}
+        <button
+          type="submit"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white hover:opacity-90 transition bg-[#042C53]"
+        >
+          <Search size={16} strokeWidth={2} />
+          검색
+        </button>
+        <Link
+          href={toggleHref("soon")}
+          className={`px-3 py-2 rounded-lg text-sm border transition ${
+            soonOnly
+              ? "bg-amber-50 border-amber-300 text-amber-900"
+              : "border-zinc-300 text-zinc-700 hover:bg-zinc-50"
+          }`}
+        >
+          소비기한 {SOON_DAYS}일 이내
+        </Link>
+        <Link
+          href={toggleHref("zero")}
+          className={`px-3 py-2 rounded-lg text-sm border transition ${
+            showZero
+              ? "bg-zinc-100 border-zinc-400 text-zinc-900"
+              : "border-zinc-300 text-zinc-700 hover:bg-zinc-50"
+          }`}
+        >
+          재고 0 포함
+        </Link>
+        <span className="ml-auto text-sm text-zinc-500">
+          총 {total}개 품목
+          {total > MAX_ROWS && (
+            <span className="ml-1 text-amber-700">
+              ({MAX_ROWS}개만 표시 — 검색으로 좁히세요)
+            </span>
+          )}
+        </span>
       </form>
 
       {/* 목록 */}
-      {rows.length === 0 ? (
-        <div className="py-16 text-center text-sm text-zinc-500 border border-dashed border-zinc-300 rounded-xl">
-          조건에 맞는 재고가 없습니다.
-        </div>
-      ) : (
-        <StockSplit rows={rows} lotsByItem={lotsByItem} soonDays={SOON_DAYS} />
-      )}
+      <div className="md:flex-1 md:min-h-0">
+        {rows.length === 0 ? (
+          <div className="py-16 text-center text-sm text-zinc-500 border border-dashed border-zinc-300 rounded-xl">
+            조건에 맞는 재고가 없습니다.
+          </div>
+        ) : (
+          <StockSplit rows={rows} lotsByItem={lotsByItem} soonDays={SOON_DAYS} />
+        )}
+      </div>
 
-      {/* 페이지 이동 */}
-      {totalPages > 1 && (
-        <div className="mt-6 flex items-center justify-center gap-2">
-          {page > 1 && (
-            <Link href={pageHref(page - 1)} className={linkBtn}>
-              ← 이전
-            </Link>
-          )}
-          <span className="text-sm text-zinc-500">
-            {Math.min(page, totalPages)} / {totalPages}
-          </span>
-          {page < totalPages && (
-            <Link href={pageHref(page + 1)} className={linkBtn}>
-              다음 →
-            </Link>
-          )}
-        </div>
-      )}
     </div>
   );
 }
