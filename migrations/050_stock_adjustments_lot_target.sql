@@ -15,11 +15,20 @@
 -- 049 테이블은 이 기능이 아직 안 쓰인 상태에서만 갈아엎는다(행이 있으면 중단).
 -- =====================================================
 
+-- ⚠️ 안전장치를 EXECUTE(동적 SQL)로 도는 이유
+--    IF ... AND EXISTS (SELECT 1 FROM item_stock_adjustments) 처럼 쓰면 조건 전체가
+--    한 SQL 문으로 파싱·플래닝돼서, 테이블이 아직 없는 서버(049 안 돌린 실서버)에서는
+--    to_regclass 검사가 무의미하게 "relation does not exist" 로 터진다.
+--    EXECUTE 는 실행 시점에만 파싱되므로 IF 안쪽으로 안전하게 숨길 수 있다.
 DO $$
+DECLARE
+  n bigint := 0;
 BEGIN
-  IF to_regclass('item_stock_adjustments') IS NOT NULL
-     AND EXISTS (SELECT 1 FROM item_stock_adjustments) THEN
-    RAISE EXCEPTION '기존 조정 데이터가 있습니다 — 수동 확인 후 진행하세요.';
+  IF to_regclass('item_stock_adjustments') IS NOT NULL THEN
+    EXECUTE 'SELECT count(*) FROM item_stock_adjustments' INTO n;
+    IF n > 0 THEN
+      RAISE EXCEPTION '기존 조정 데이터가 있습니다 — 수동 확인 후 진행하세요.';
+    END IF;
   END IF;
 END $$;
 
