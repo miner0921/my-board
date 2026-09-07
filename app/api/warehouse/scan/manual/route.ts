@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withTransaction } from "@/lib/db";
 import { auth } from "@/auth";
 import { logAccess } from "@/lib/audit";
+import { deductForInvoice, restoreForInvoice } from "@/lib/stock";
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/warehouse/scan/manual
@@ -118,6 +119,8 @@ export async function POST(request: Request) {
             WHERE id = $1`,
           [invoiceId]
         );
+        // 완료가 풀렸으니 이 송장으로 나간 재고를 원래 로트로 되돌린다.
+        await restoreForInvoice(client, invoiceId, userId);
         autoReopened = true;
       }
 
@@ -170,7 +173,11 @@ export async function POST(request: Request) {
             RETURNING completed_at`,
           [userId, invoiceId]
         );
-        if (upd.rows.length > 0) completedAt = upd.rows[0].completed_at;
+        if (upd.rows.length > 0) {
+          completedAt = upd.rows[0].completed_at;
+          // 완료 확정 → 소비기한 순으로 재고 차감.
+          await deductForInvoice(client, invoiceId, userId);
+        }
       }
 
       return {

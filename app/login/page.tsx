@@ -58,6 +58,29 @@ function LoginForm() {
       return;
     }
 
+    // 브라우저 비밀번호 관리자에 저장 요청.
+    // signIn 은 redirect:false 라 화면 전환이 없어서 브라우저가 로그인 성공을
+    // 스스로 감지하지 못한다 → 저장 팝업도 안 뜬다. 여기서 명시적으로 알린다.
+    // 비밀번호는 우리가 보관하지 않는다. 저장 여부는 브라우저와 사용자가 정한다.
+    try {
+      const PC = (
+        window as unknown as {
+          PasswordCredential?: new (d: {
+            id: string;
+            password: string;
+            name?: string;
+          }) => Credential;
+        }
+      ).PasswordCredential;
+      if (PC && navigator.credentials) {
+        await navigator.credentials.store(
+          new PC({ id: username, password, name: username })
+        );
+      }
+    } catch {
+      // 저장 실패는 로그인과 무관 — 무시하고 진행
+    }
+
     // 로그인 성공 → 원래 가려던 페이지(callbackUrl) 또는 홈으로
     router.push(callbackUrl);
     router.refresh();
@@ -71,6 +94,8 @@ function LoginForm() {
         </label>
         <input
           type="text"
+          id="username"
+          name="username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           disabled={loading}
@@ -86,6 +111,8 @@ function LoginForm() {
         </label>
         <input
           type="password"
+          id="password"
+          name="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={loading}

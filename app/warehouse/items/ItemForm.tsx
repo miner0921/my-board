@@ -39,6 +39,7 @@ export default function ItemForm(props: Props) {
   const [barcode, setBarcode] = useState("");
   const [scanExempt, setScanExempt] = useState(false);
   const [inspectionExempt, setInspectionExempt] = useState(false);
+  const [expiryManaged, setExpiryManaged] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(isEdit);
@@ -93,6 +94,7 @@ export default function ItemForm(props: Props) {
         setBarcode(data.item.barcode ?? "");
         setScanExempt(!!data.item.scan_exempt);
         setInspectionExempt(!!data.item.inspection_exempt);
+        setExpiryManaged(!!data.item.expiry_managed);
         setAliases(data.aliases ?? []);
         setBarcodes(data.barcodes ?? []);
         setHasExistingImage(!!data.item.has_image);
@@ -263,6 +265,7 @@ export default function ItemForm(props: Props) {
       // name(품명)은 서버에서 buildItemName(구분, 종류) = 정규화 품명으로 조합 — 여기서 보내지 않음
       formData.append("scan_exempt", scanExempt ? "1" : "");
       formData.append("inspection_exempt", inspectionExempt ? "1" : "");
+      formData.append("expiry_managed", expiryManaged ? "1" : "");
       if (newImageFile) {
         formData.append("image", newImageFile);
       } else if (isEdit && removeExisting) {
@@ -542,6 +545,24 @@ export default function ItemForm(props: Props) {
           스캔불필요{" "}
           <span className="text-xs text-zinc-400 font-normal">
             — 송장 표기용. 검수·진행률에서 제외.
+          </span>
+        </span>
+      </label>
+
+      {/* 소비기한 관리 — 재고 입고 시 소비기한 입력을 필수로 만든다.
+          체크 안 하면 입고일 순(FIFO)으로 차감된다. */}
+      <label className="flex items-start gap-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={expiryManaged}
+          onChange={(e) => setExpiryManaged(e.target.checked)}
+          disabled={workerEdit}
+          className="mt-0.5 accent-violet-700 disabled:cursor-not-allowed"
+        />
+        <span className="text-sm text-zinc-700">
+          소비기한 관리{" "}
+          <span className="text-xs text-zinc-400 font-normal">
+            — 입고 시 소비기한 필수. 재고는 소비기한 빠른 순으로 차감.
           </span>
         </span>
       </label>

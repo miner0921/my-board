@@ -5,6 +5,7 @@ import { logAccess } from "@/lib/audit";
 import { parseProductName } from "@/lib/parse-product";
 import { loadItemIndex } from "@/lib/resolve-item";
 import { isCompletedStatus } from "@/lib/invoice-status";
+import { deductForInvoice, restoreForInvoice } from "@/lib/stock";
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/warehouse/scan
@@ -261,6 +262,8 @@ export async function POST(request: Request) {
             WHERE id = $1`,
           [currentInvoiceId]
         );
+        // 완료가 풀렸으니 이 송장으로 나간 재고를 원래 로트로 되돌린다.
+        await restoreForInvoice(client, currentInvoiceId, userId);
         return true;
       };
 
@@ -415,6 +418,8 @@ export async function POST(request: Request) {
             );
             if (upd.rows.length > 0) {
               completedAt = upd.rows[0].completed_at;
+              // 완료 확정 → 소비기한 순으로 재고 차감.
+              await deductForInvoice(client, currentInvoiceId, userId);
             }
           }
 
@@ -545,6 +550,8 @@ export async function POST(request: Request) {
         );
         if (upd.rows.length > 0) {
           completedAt = upd.rows[0].completed_at;
+          // 완료 확정 → 소비기한 순으로 재고 차감.
+          await deductForInvoice(client, currentInvoiceId, userId);
         }
       }
 

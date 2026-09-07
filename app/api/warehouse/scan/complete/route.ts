@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withTransaction } from "@/lib/db";
 import { auth } from "@/auth";
 import { logAccess } from "@/lib/audit";
+import { deductForInvoice } from "@/lib/stock";
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/warehouse/scan/complete
@@ -96,6 +97,9 @@ export async function POST(request: Request) {
           RETURNING completed_at`,
         [userId, reason, note, invoiceId]
       );
+
+      // 결품 완료도 완료다 → 실제 챙긴 수량만큼 소비기한 순으로 차감.
+      await deductForInvoice(client, invoiceId, userId);
 
       return {
         kind: "ok" as const,

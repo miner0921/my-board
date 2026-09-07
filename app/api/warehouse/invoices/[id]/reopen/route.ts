@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { withTransaction } from "@/lib/db";
 import { auth } from "@/auth";
 import { logAccess } from "@/lib/audit";
+import { restoreForInvoice } from "@/lib/stock";
 import { isCompletedStatus } from "@/lib/invoice-status";
 
 // ─────────────────────────────────────────────────────────────
@@ -96,6 +97,9 @@ export async function POST(request: Request, { params }: RouteContext) {
           WHERE id = $1`,
         [invoiceId]
       );
+
+      // 완료가 풀렸으니 이 송장으로 나간 재고를 원래 로트로 되돌린다.
+      await restoreForInvoice(client, invoiceId, userId);
 
       return {
         kind: "ok" as const,

@@ -29,7 +29,7 @@ export async function GET(request: Request, { params }: RouteContext) {
       `SELECT
          i.id, i.product_code, i.category, i.kind, i.barcode, i.name,
          i.created_by, i.created_at, i.updated_at,
-         i.is_auto_created, i.scan_exempt, i.inspection_exempt,
+         i.is_auto_created, i.scan_exempt, i.inspection_exempt, i.expiry_managed,
          (i.image_data IS NOT NULL) AS has_image,
          u.nickname AS author_nickname
        FROM items i
@@ -105,7 +105,7 @@ export async function PUT(request: Request, { params }: RouteContext) {
 
     // 기존행 로드 — 404 체크 + 작업자 경로에서 그대로 유지할 값(name 불변 = 매칭키 보존)
     const check = await query(
-      "SELECT product_code, category, kind, name, scan_exempt, inspection_exempt FROM items WHERE id = $1",
+      "SELECT product_code, category, kind, name, scan_exempt, inspection_exempt, expiry_managed FROM items WHERE id = $1",
       [id]
     );
     if (check.rows.length === 0) {
@@ -124,6 +124,7 @@ export async function PUT(request: Request, { params }: RouteContext) {
     let barcode: string | null;
     let scanExempt: boolean;
     let inspectionExempt: boolean;
+    let expiryManaged: boolean;
 
     if (isAdmin) {
       // 관리자: 전체 필드 수정 + name 재조합 (정규화형) — 현행 그대로
@@ -139,6 +140,7 @@ export async function PUT(request: Request, { params }: RouteContext) {
       ({ name, category, kind, productCode, barcode } = fields);
       scanExempt = formData.get("scan_exempt") === "1";
       inspectionExempt = formData.get("inspection_exempt") === "1";
+      expiryManaged = formData.get("expiry_managed") === "1";
 
       // 품명 중복 방지(관리자가 품명을 바꿀 수 있는 경로만) — 자기 자신 제외하고
       //   활성 품목 중 같은 정규화 품명(name)이 있으면 거부. name 은 정규화형이라 컬럼 직접 비교.
@@ -174,6 +176,8 @@ export async function PUT(request: Request, { params }: RouteContext) {
       scanExempt = cur.scan_exempt === true;
       // 스캔불필요도 관리자 전용(동봉과 동일 정책) — 작업자 경로는 기존값 보존.
       inspectionExempt = cur.inspection_exempt === true;
+      // 소비기한 관리 여부도 관리자 전용 — 작업자 경로는 기존값 보존.
+      expiryManaged = cur.expiry_managed === true;
     }
 
     let imageSql: string;
@@ -184,7 +188,7 @@ export async function PUT(request: Request, { params }: RouteContext) {
       if (!parsed.ok) {
         return NextResponse.json({ error: parsed.error }, { status: 400 });
       }
-      imageSql = ", image_data = $9, image_mime = $10";
+      imageSql = ", image_data = $10, image_mime = $11";
       imageParams = [parsed.buffer, parsed.mime];
     } else if (removeImage) {
       imageSql = ", image_data = NULL, image_mime = NULL";
@@ -198,12 +202,13 @@ export async function PUT(request: Request, { params }: RouteContext) {
     const result = await query(
       `UPDATE items
        SET product_code = $1, category = $2, kind = $3, barcode = $4, name = $5,
-           scan_exempt = $6, inspection_exempt = $7, updated_at = CURRENT_TIMESTAMP
+           scan_exempt = $6, inspection_exempt = $7, expiry_managed = $8,
+           updated_at = CURRENT_TIMESTAMP
            ${imageSql}
-       WHERE id = $8
-       RETURNING id, product_code, category, kind, barcode, name, updated_at, scan_exempt, inspection_exempt,
+       WHERE id = $9
+       RETURNING id, product_code, category, kind, barcode, name, updated_at, scan_exempt, inspection_exempt, expiry_managed,
                  (image_data IS NOT NULL) AS has_image`,
-      [productCode, category, kind, barcode, name, scanExempt, inspectionExempt, id, ...imageParams]
+      [productCode, category, kind, barcode, name, scanExempt, inspectionExempt, expiryManaged, id, ...imageParams]
     );
 
     await logAccess({

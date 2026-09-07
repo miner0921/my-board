@@ -27,7 +27,7 @@ export async function GET(request: Request) {
       SELECT
         i.id, i.product_code, i.category, i.kind, i.barcode, i.name,
         i.created_by, i.created_at, i.updated_at,
-        i.is_auto_created, i.scan_exempt, i.inspection_exempt,
+        i.is_auto_created, i.scan_exempt, i.inspection_exempt, i.expiry_managed,
         (i.image_data IS NOT NULL) AS has_image,
         u.nickname AS author_nickname
       FROM items i
@@ -83,6 +83,8 @@ export async function POST(request: Request) {
     const scanExempt = formData.get("scan_exempt") === "1";
     // 스캔불필요(검수 제외) — 동봉(scan_exempt)과 완전 별개 플래그.
     const inspectionExempt = formData.get("inspection_exempt") === "1";
+    // 소비기한 관리 대상 — 재고 입고 시 소비기한 입력을 강제할지 여부.
+    const expiryManaged = formData.get("expiry_managed") === "1";
 
     // 검증 + 정규화 품명 조합을 단일 헬퍼로 (엑셀·개별 일관) — name 은 정규화형
     const fields = buildItemFields({
@@ -125,9 +127,9 @@ export async function POST(request: Request) {
     // 바코드는 중복 허용 (016에서 UNIQUE 제약 해제) — 같은 바코드 품목 여럿 OK.
     const result = await query(
       `INSERT INTO items
-         (product_code, category, kind, barcode, name, image_data, image_mime, created_by, scan_exempt, inspection_exempt)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       RETURNING id, product_code, category, kind, barcode, name, created_by, created_at, scan_exempt, inspection_exempt,
+         (product_code, category, kind, barcode, name, image_data, image_mime, created_by, scan_exempt, inspection_exempt, expiry_managed)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING id, product_code, category, kind, barcode, name, created_by, created_at, scan_exempt, inspection_exempt, expiry_managed,
                  (image_data IS NOT NULL) AS has_image`,
       [
         productCode,
@@ -140,6 +142,7 @@ export async function POST(request: Request) {
         session.user.id,
         scanExempt,
         inspectionExempt,
+        expiryManaged,
       ]
     );
 

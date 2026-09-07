@@ -24,6 +24,10 @@ const TITLE_MAP: Record<string, { crumb: string; title: string }> = {
   "/warehouse/scan": { crumb: "", title: "출고 스캔" },
   "/warehouse/invoices": { crumb: "", title: "송장 관리" },
   "/warehouse/items": { crumb: "", title: "품목 관리" },
+  "/warehouse/stock": { crumb: "", title: "재고 관리" },
+  "/warehouse/stock/history": { crumb: "재고 관리", title: "입출고 내역" },
+  "/warehouse/stock/receipts": { crumb: "재고 관리", title: "입고증" },
+  "/warehouse/stock/receive": { crumb: "재고 관리", title: "현장 입고" },
   "/admin/users": { crumb: "관리", title: "사용자 관리" },
   "/profile/password": { crumb: "계정", title: "비밀번호 변경" },
 };
@@ -31,6 +35,7 @@ const TITLE_MAP: Record<string, { crumb: string; title: string }> = {
 // prefix 기반 매칭 (동적 세그먼트 포함 경로).
 const PREFIX_MAP: { prefix: string; crumb: string; title: string }[] = [
   { prefix: "/warehouse/invoices/", crumb: "송장 관리", title: "송장 상세" },
+  { prefix: "/warehouse/stock/receipts/", crumb: "재고 관리", title: "입고증 상세" },
 ];
 
 function resolveHeader(pathname: string): { crumb: string; title: string } {

@@ -8,6 +8,7 @@ import {
   ScanLine,
   FileText,
   Package,
+  Boxes,
   Users,
   KeyRound,
   LogOut,
@@ -37,6 +38,7 @@ const MAIN_NAV: NavItem[] = [
   { href: "/warehouse/invoices", label: "송장 관리", icon: FileText },
   { href: "/warehouse/scan", label: "출고 스캔", icon: ScanLine },
   { href: "/warehouse/items", label: "품목 관리", icon: Package },
+  { href: "/warehouse/stock", label: "재고 관리", icon: Boxes },
 ];
 
 const ADMIN_NAV: NavItem[] = [

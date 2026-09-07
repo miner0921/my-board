@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { withTransaction } from "@/lib/db";
 import { auth } from "@/auth";
 import { logAccess } from "@/lib/audit";
+import { deductForInvoice } from "@/lib/stock";
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/warehouse/invoices/manual-complete
@@ -106,6 +107,10 @@ export async function POST(request: Request) {
           [eligible, userId]
         );
         completedIds = upd.rows.map((r) => Number(r.id));
+        // 수동완료도 출고다 → 송장 수량만큼 소비기한 순으로 차감.
+        for (const cid of completedIds) {
+          await deductForInvoice(client, cid, userId);
+        }
       }
 
       // 혹시 eligible 이었으나 경합으로 갱신 안 된 건은 스킵으로 흡수.
