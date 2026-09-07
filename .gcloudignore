@@ -14,5 +14,8 @@ out
 .idea
 npm-debug.log*
 
+# 로컬 전용 덤프/작업 폴더 (실서버 이미지에 들어갈 이유 없음)
+_localdump
+
 .DS_Store
 Thumbs.db
