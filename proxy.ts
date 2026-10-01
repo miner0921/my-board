@@ -27,6 +27,14 @@ function isWarehousePage(pathname: string) {
 function isWarehouseApi(pathname: string) {
   return pathname.startsWith("/api/warehouse/");
 }
+// 정산은 금액 + 수하인 개인정보가 걸린 화면이라 /warehouse 안이지만 관리자 전용이다.
+function isSettlementArea(pathname: string) {
+  return (
+    pathname === "/warehouse/settlements" ||
+    pathname.startsWith("/warehouse/settlements/") ||
+    pathname.startsWith("/api/warehouse/settlements")
+  );
+}
 function isAdminPage(pathname: string) {
   return pathname === "/admin" || pathname.startsWith("/admin/");
 }
@@ -71,6 +79,17 @@ export const proxy = auth((req) => {
         { status: 403 }
       );
     }
+  }
+
+  // 1-c) 정산: 로그인 + 관리자만 (API는 403 JSON, 페이지는 대시보드로)
+  if (isSettlementArea(pathname) && isLoggedIn && role !== "admin") {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "관리자 권한이 필요합니다." },
+        { status: 403 }
+      );
+    }
+    return NextResponse.redirect(new URL("/warehouse", req.nextUrl.origin));
   }
 
   // 2) 출고/관리자/프로필 페이지: 비로그인이면 /login 리다이렉트

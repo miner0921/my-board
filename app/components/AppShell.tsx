@@ -28,6 +28,7 @@ const TITLE_MAP: Record<string, { crumb: string; title: string }> = {
   "/warehouse/stock/history": { crumb: "재고 관리", title: "입출고 내역" },
   "/warehouse/stock/receipts": { crumb: "재고 관리", title: "입고증" },
   "/warehouse/stock/receive": { crumb: "재고 관리", title: "현장 입고" },
+  "/warehouse/settlements": { crumb: "관리", title: "정산 관리" },
   "/admin/users": { crumb: "관리", title: "사용자 관리" },
   "/profile/password": { crumb: "계정", title: "비밀번호 변경" },
 };
@@ -36,6 +37,7 @@ const TITLE_MAP: Record<string, { crumb: string; title: string }> = {
 const PREFIX_MAP: { prefix: string; crumb: string; title: string }[] = [
   { prefix: "/warehouse/invoices/", crumb: "송장 관리", title: "송장 상세" },
   { prefix: "/warehouse/stock/receipts/", crumb: "재고 관리", title: "입고증 상세" },
+  { prefix: "/warehouse/settlements/", crumb: "정산 관리", title: "정산 내역서" },
 ];
 
 function resolveHeader(pathname: string): { crumb: string; title: string } {

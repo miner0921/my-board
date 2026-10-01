@@ -10,6 +10,7 @@ import {
   Package,
   Boxes,
   Users,
+  Calculator,
   KeyRound,
   LogOut,
   Loader2,
@@ -42,6 +43,7 @@ const MAIN_NAV: NavItem[] = [
 ];
 
 const ADMIN_NAV: NavItem[] = [
+  { href: "/warehouse/settlements", label: "정산 관리", icon: Calculator },
   { href: "/admin/users", label: "사용자", icon: Users },
 ];
 
