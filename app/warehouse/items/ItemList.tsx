@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { STORAGE_TYPES, storageLabel } from "@/lib/storage-type";
 import BarcodeTag from "../_components/BarcodeTag";
 import { BulkSelectInline, BulkCheckbox } from "../_components/BulkSelect";
 import EditItemButton from "./EditItemButton";
@@ -30,8 +31,11 @@ export type Item = {
   is_auto_created: boolean;
   scan_exempt: boolean;
   inspection_exempt?: boolean; // 스캔불필요(검수 제외) 배지용
+  storage_type?: string | null; // 보관온도 배지용 (room/chilled/frozen)
   author_nickname: string | null;
 };
+
+const storageColor = (v: string) => STORAGE_TYPES.find((t) => t.value === v)?.color;
 
 // 항상 한국시간(Asia/Seoul)으로 표시 (timeZone 고정 → 서버/브라우저 결과 동일).
 function formatDate(date: string) {
@@ -151,9 +155,17 @@ export default function ItemList({
                       ) : null}
                     </p>
                   )}
-                  {/* 배지: 바코드 미등록 / 스캔불필요 / 숨김 — 품목명 아래 현행 유지 */}
-                  {(!item.barcode || item.inspection_exempt || viewDeleted) && (
+                  {/* 배지: 보관온도 / 바코드 미등록 / 스캔불필요 / 숨김 — 품목명 아래 */}
+                  {(item.storage_type || !item.barcode || item.inspection_exempt || viewDeleted) && (
                     <div className="mt-1 flex items-center gap-1 flex-wrap">
+                      {item.storage_type && (
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[10px] border"
+                          style={{ color: storageColor(item.storage_type), borderColor: storageColor(item.storage_type) }}
+                        >
+                          {storageLabel(item.storage_type)}
+                        </span>
+                      )}
                       {!item.barcode && <BarcodeTag barcode={null} />}
                       {item.inspection_exempt && (
                         <span className="px-1.5 py-0.5 rounded text-[10px] border bg-violet-50 text-violet-600 border-violet-200">

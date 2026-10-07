@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { STORAGE_TYPES } from "@/lib/storage-type";
 import { splitProductName, buildItemName } from "@/lib/product-name";
 import { itemMatchKey } from "@/lib/resolve-item";
 
@@ -40,6 +41,7 @@ export default function ItemForm(props: Props) {
   const [scanExempt, setScanExempt] = useState(false);
   const [inspectionExempt, setInspectionExempt] = useState(false);
   const [expiryManaged, setExpiryManaged] = useState(false);
+  const [storageType, setStorageType] = useState(""); // 보관온도: room/chilled/frozen, "" = 미지정
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(isEdit);
@@ -95,6 +97,7 @@ export default function ItemForm(props: Props) {
         setScanExempt(!!data.item.scan_exempt);
         setInspectionExempt(!!data.item.inspection_exempt);
         setExpiryManaged(!!data.item.expiry_managed);
+        setStorageType(data.item.storage_type ?? "");
         setAliases(data.aliases ?? []);
         setBarcodes(data.barcodes ?? []);
         setHasExistingImage(!!data.item.has_image);
@@ -266,6 +269,7 @@ export default function ItemForm(props: Props) {
       formData.append("scan_exempt", scanExempt ? "1" : "");
       formData.append("inspection_exempt", inspectionExempt ? "1" : "");
       formData.append("expiry_managed", expiryManaged ? "1" : "");
+      formData.append("storage_type", storageType);
       if (newImageFile) {
         formData.append("image", newImageFile);
       } else if (isEdit && removeExisting) {
@@ -566,6 +570,30 @@ export default function ItemForm(props: Props) {
           </span>
         </span>
       </label>
+
+      {/* 보관온도 — 대시보드 출고수량(상온/냉장/냉동) 통계용 */}
+      <div>
+        <label className="block text-sm font-medium text-zinc-700 mb-1">
+          보관온도
+        </label>
+        <div className="flex gap-2">
+          {[{ value: "", label: "미지정" }, ...STORAGE_TYPES].map((t) => (
+            <button
+              key={t.value || "none"}
+              type="button"
+              onClick={() => setStorageType(t.value)}
+              disabled={workerEdit}
+              className={`px-3 py-1.5 text-sm rounded-md border transition disabled:cursor-not-allowed ${
+                storageType === t.value
+                  ? "bg-zinc-900 text-white border-zinc-900"
+                  : "bg-white text-zinc-700 border-zinc-300 hover:border-zinc-500"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* 대표 이미지 */}
       <div>

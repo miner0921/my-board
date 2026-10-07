@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { parseStorageType } from "@/lib/storage-type";
 import { query } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
@@ -27,7 +28,7 @@ export async function GET(request: Request) {
       SELECT
         i.id, i.product_code, i.category, i.kind, i.barcode, i.name,
         i.created_by, i.created_at, i.updated_at,
-        i.is_auto_created, i.scan_exempt, i.inspection_exempt, i.expiry_managed,
+        i.is_auto_created, i.scan_exempt, i.inspection_exempt, i.expiry_managed, i.storage_type,
         (i.image_data IS NOT NULL) AS has_image,
         u.nickname AS author_nickname
       FROM items i
@@ -85,6 +86,8 @@ export async function POST(request: Request) {
     const inspectionExempt = formData.get("inspection_exempt") === "1";
     // 소비기한 관리 대상 — 재고 입고 시 소비기한 입력을 강제할지 여부.
     const expiryManaged = formData.get("expiry_managed") === "1";
+    // 보관온도(상온/냉장/냉동) — 대시보드 출고 통계용. 빈 값 = 미지정(NULL).
+    const storageType = parseStorageType(formData.get("storage_type"));
 
     // 검증 + 정규화 품명 조합을 단일 헬퍼로 (엑셀·개별 일관) — name 은 정규화형
     const fields = buildItemFields({
@@ -127,9 +130,9 @@ export async function POST(request: Request) {
     // 바코드는 중복 허용 (016에서 UNIQUE 제약 해제) — 같은 바코드 품목 여럿 OK.
     const result = await query(
       `INSERT INTO items
-         (product_code, category, kind, barcode, name, image_data, image_mime, created_by, scan_exempt, inspection_exempt, expiry_managed)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       RETURNING id, product_code, category, kind, barcode, name, created_by, created_at, scan_exempt, inspection_exempt, expiry_managed,
+         (product_code, category, kind, barcode, name, image_data, image_mime, created_by, scan_exempt, inspection_exempt, expiry_managed, storage_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING id, product_code, category, kind, barcode, name, created_by, created_at, scan_exempt, inspection_exempt, expiry_managed, storage_type,
                  (image_data IS NOT NULL) AS has_image`,
       [
         productCode,
@@ -143,6 +146,7 @@ export async function POST(request: Request) {
         scanExempt,
         inspectionExempt,
         expiryManaged,
+        storageType,
       ]
     );
 
